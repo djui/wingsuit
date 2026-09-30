@@ -14,8 +14,28 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. `?loc=<id>` selects a launch site (see
-`src/world/locations.ts`).
+Open http://localhost:5173. Pick a launch site in the menu, or use `?loc=<id>`
+(ids in `src/world/locations.ts`).
+
+## Launch sites
+
+Mountains: Eiger Mushroom, Lauterbrunnen High Nose, Brévent, Monte Brento,
+Kjerag, Half Dome, Table Mountain, Mount Fuji (helicopter drop).
+Cities: Burj Khalifa, Corcovado (Rio), Victoria Peak (helicopter drop),
+Petronas Towers.
+
+Exits are placed on the steepest face the elevation data shows, and the
+jumper starts a few metres out over the face because 13 m elevation pixels
+smooth vertical walls into steep slopes. Tower exits use the real roof
+altitude since the elevation data has no buildings.
+
+## Conditions
+
+Time of day (dawn to night, custom hour, or live) drives the real sun and
+moon position for the site's coordinates and today's date. Sky (clear, partly,
+overcast), precipitation (rain, snow), and wind speed/direction are selectable;
+"Use live weather" pulls current conditions from Open-Meteo. Wind gusts,
+wobbles, and rises where it blows up a slope.
 
 ## Controls
 

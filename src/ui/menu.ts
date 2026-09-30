@@ -1,11 +1,21 @@
 import type { ScoreEntry } from '../core/scores';
 import type { GameMode } from '../core/state';
+import type { EnvironmentSettings, Precipitation, SkyPreset } from '../world/environment';
 import type { Location } from '../world/locations';
+import type { TimePreset } from '../world/sky/sun';
 
-function el(id: string): HTMLElement {
+function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const e = document.getElementById(id);
   if (!e) throw new Error(`missing #${id}`);
-  return e;
+  return e as T;
+}
+
+export interface MenuCallbacks {
+  onStart: () => void;
+  onMode: (mode: GameMode) => void;
+  onEnvironment: (settings: EnvironmentSettings) => void;
+  onLive: () => void;
+  onLocation: (id: string) => void;
 }
 
 export class Menu {
@@ -13,30 +23,97 @@ export class Menu {
   private title = el('menu-title');
   private sub = el('menu-sub');
   private progress = el('menu-progress');
-  private button = el('menu-start') as HTMLButtonElement;
+  private button = el<HTMLButtonElement>('menu-start');
   private result = el('menu-result');
   private scores = el('menu-scores');
+  private locationList = el('menu-locations');
   private modeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="mode"]'));
+  private timeSelect = el<HTMLSelectElement>('env-time');
+  private hourInput = el<HTMLInputElement>('env-hour');
+  private hourLabel = el('env-hour-label');
+  private skySelect = el<HTMLSelectElement>('env-sky');
+  private precipSelect = el<HTMLSelectElement>('env-precip');
+  private windSpeed = el<HTMLInputElement>('env-wind-speed');
+  private windSpeedLabel = el('env-wind-speed-label');
+  private windFrom = el<HTMLInputElement>('env-wind-from');
+  private windFromLabel = el('env-wind-from-label');
+  private liveButton = el<HTMLButtonElement>('env-live');
+  private liveStatus = el('env-live-status');
 
-  constructor(
-    private readonly onStart: () => void,
-    private readonly onMode: (mode: GameMode) => void,
-  ) {
-    this.button.addEventListener('click', () => this.onStart());
+  constructor(private readonly cb: MenuCallbacks) {
+    this.button.addEventListener('click', () => this.cb.onStart());
     for (const input of this.modeInputs) {
       input.addEventListener('change', () => {
-        if (input.checked) this.onMode(input.value as GameMode);
+        if (input.checked) this.cb.onMode(input.value as GameMode);
       });
     }
+    const onEnv = () => {
+      this.hourInput.disabled = this.timeSelect.value !== 'custom';
+      this.updateLabels();
+      this.cb.onEnvironment(this.environment);
+    };
+    for (const c of [this.timeSelect, this.hourInput, this.skySelect, this.precipSelect, this.windSpeed, this.windFrom]) {
+      c.addEventListener('input', onEnv);
+    }
+    this.liveButton.addEventListener('click', () => this.cb.onLive());
   }
 
   get mode(): GameMode {
     return (this.modeInputs.find((i) => i.checked)?.value as GameMode) ?? 'distance';
   }
 
+  get environment(): EnvironmentSettings {
+    return {
+      time: this.timeSelect.value as TimePreset,
+      hour: Number(this.hourInput.value),
+      sky: this.skySelect.value as SkyPreset,
+      precip: this.precipSelect.value as Precipitation,
+      windSpeed: Number(this.windSpeed.value),
+      windFrom: Number(this.windFrom.value),
+    };
+  }
+
+  setEnvironment(s: EnvironmentSettings): void {
+    this.timeSelect.value = s.time;
+    this.hourInput.value = String(s.hour);
+    this.skySelect.value = s.sky;
+    this.precipSelect.value = s.precip;
+    this.windSpeed.value = String(s.windSpeed);
+    this.windFrom.value = String(s.windFrom);
+    this.hourInput.disabled = s.time !== 'custom';
+    this.updateLabels();
+  }
+
+  setLiveStatus(text: string, busy = false): void {
+    this.liveStatus.textContent = text;
+    this.liveButton.disabled = busy;
+  }
+
+  private updateLabels(): void {
+    const h = Number(this.hourInput.value);
+    this.hourLabel.textContent = `${Math.floor(h).toString().padStart(2, '0')}:${Math.round((h % 1) * 60)
+      .toString()
+      .padStart(2, '0')} solar`;
+    this.windSpeedLabel.textContent = `${Number(this.windSpeed.value).toFixed(0)} m/s`;
+    this.windFromLabel.textContent = `${Number(this.windFrom.value).toFixed(0)}°`;
+  }
+
+  setLocations(locations: Location[], currentId: string): void {
+    this.locationList.innerHTML = '';
+    for (const loc of locations) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `loc ${loc.kind}${loc.id === currentId ? ' current' : ''}`;
+      b.innerHTML = `<span class="loc-name">${loc.name}</span><span class="loc-meta">${loc.country} · ${loc.kind}</span>`;
+      b.title = loc.blurb;
+      b.addEventListener('click', () => this.cb.onLocation(loc.id));
+      this.locationList.appendChild(b);
+    }
+  }
+
   showLocation(loc: Location): void {
     this.title.textContent = loc.name;
-    this.sub.textContent = `${loc.country} · exit ${loc.exit.lat.toFixed(4)}, ${loc.exit.lon.toFixed(4)}`;
+    this.sub.textContent = `${loc.country} · ${loc.blurb}`;
     this.result.textContent = '';
     this.root.classList.remove('hidden');
   }

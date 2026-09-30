@@ -1,6 +1,6 @@
 // Scans a grid around a point for the steepest initial drop along a heading.
 import { PNG } from 'pngjs';
-const [lat0, lon0, heading = 0, span = 400] = process.argv.slice(2).map(Number);
+const [lat0, lon0, heading = 0, span = 400, minAlt = -1000] = process.argv.slice(2).map(Number);
 const Z = 13, cache = new Map();
 async function tile(x, y) {
   const k = `${x}/${y}`;
@@ -27,5 +27,7 @@ for (let dn = -span; dn <= span; dn += 25) for (let de = -span; de <= span; de +
   const z200 = await height(lat + 200 * Math.cos(h) / mLat, lon + 200 * Math.sin(h) / mLon);
   results.push({ lat: lat.toFixed(5), lon: lon.toFixed(5), z0: z0.toFixed(0), drop60: (z0 - z60).toFixed(0), drop200: (z0 - z200).toFixed(0) });
 }
-results.sort((a, b) => b.drop60 - a.drop60); const hi = results.filter(r => +r.z0 > 3400); console.table(hi.slice(0, 8));
+results.sort((a, b) => b.drop60 - a.drop60);
+const hi = results.filter((r) => +r.z0 > minAlt);
+console.table(hi.slice(0, 5));
 console.table(results.slice(0, 12));

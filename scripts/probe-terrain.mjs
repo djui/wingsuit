@@ -38,7 +38,7 @@ const mPerDegLat = 111320;
 const mPerDegLon = 111320 * Math.cos((lat0 * Math.PI) / 180);
 const h = (heading * Math.PI) / 180;
 console.log(`profile from ${lat0},${lon0} heading ${heading}° (${km} km)`);
-for (let d = 0; d <= km * 1000; d += 10) {
+for (let d = 0; d <= km * 1000; d += 100) {
   const lat = lat0 + (d * Math.cos(h)) / mPerDegLat;
   const lon = lon0 + (d * Math.sin(h)) / mPerDegLon;
   const z = await height(lat, lon);

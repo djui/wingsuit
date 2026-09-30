@@ -8,12 +8,17 @@ import { CanopySystem } from './sim/canopy';
 import { FlyerBody } from './sim/wingsuit';
 import { Hud } from './ui/hud';
 import { Menu } from './ui/menu';
+import { loadEnvironmentSettings, saveEnvironmentSettings, type EnvironmentSettings, type EnvironmentState } from './world/environment';
 import { GeoOrigin, horizontalDistance } from './world/geo';
 import { createLandingZone } from './world/landingZone';
-import { getLocation } from './world/locations';
+import { getLocation, LOCATIONS } from './world/locations';
+import { CloudLayer } from './world/sky/clouds';
+import { Precipitation3D } from './world/sky/particles';
 import { SkyDome } from './world/sky/sky';
 import { TerrainManager } from './world/terrain/chunks';
 import { ATTRIBUTION } from './world/terrain/tiles';
+import { fetchLiveWeather, resolveEnvironment, settingsFromLive } from './world/weather';
+import { WindField } from './world/wind';
 
 const PHYSICS_DT = 1 / 120;
 const BODY_CLEARANCE = 0.6;
@@ -29,12 +34,19 @@ renderer.toneMappingExposure = 0.55;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0xc8d6e6, 0.000045);
+const fog = new THREE.FogExp2(0xc8d6e6, 0.000045);
+scene.fog = fog;
 const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.3, 120000);
 scene.add(camera);
 
 const sky = new SkyDome(scene);
-const location = getLocation(new URLSearchParams(window.location.search).get('loc') ?? 'eiger');
+const clouds = new CloudLayer();
+scene.add(clouds.mesh);
+const precipitation = new Precipitation3D();
+scene.add(precipitation.group);
+const requestedLoc = new URLSearchParams(window.location.search).get('loc') ?? localStorage.getItem('wingsuit.location') ?? 'eiger';
+const location = LOCATIONS.some((l) => l.id === requestedLoc) ? getLocation(requestedLoc) : getLocation('eiger');
+localStorage.setItem('wingsuit.location', location.id);
 const origin = new GeoOrigin(location.exit);
 const terrain = new TerrainManager(origin, location.loadRadius);
 scene.add(terrain.group);
@@ -48,10 +60,19 @@ const input = new KeyboardInput();
 const hud = new Hud();
 const run = newRunState();
 const wind = new THREE.Vector3();
-const menu = new Menu(
-  () => startRun(),
-  (mode) => setMode(mode),
-);
+const windField = new WindField();
+let envSettings: EnvironmentSettings = loadEnvironmentSettings();
+let envState: EnvironmentState;
+const menu = new Menu({
+  onStart: () => startRun(),
+  onMode: (mode) => setMode(mode),
+  onEnvironment: (settings) => applyEnvironment(settings),
+  onLive: () => useLiveWeather(),
+  onLocation: (id) => {
+    localStorage.setItem('wingsuit.location', id);
+    window.location.search = `?loc=${id}`;
+  },
+});
 document.getElementById('attribution')!.textContent = ATTRIBUTION;
 
 const exitLocal = origin.toLocal(location.exit.lat, location.exit.lon);
@@ -61,12 +82,35 @@ const lzPos = new THREE.Vector3(lzLocal.x, 0, lzLocal.z);
 const landingZone = createLandingZone(location.landing.radius);
 scene.add(landingZone);
 
-function setWind(fromDeg: number, speed: number): void {
-  // Wind *from* fromDeg blows toward fromDeg + 180. Scene: +x east, -z north.
-  const to = THREE.MathUtils.degToRad(fromDeg + 180);
-  wind.set(Math.sin(to) * speed, 0, -Math.cos(to) * speed);
+function applyEnvironment(settings: EnvironmentSettings): void {
+  envSettings = settings;
+  saveEnvironmentSettings(settings);
+  envState = resolveEnvironment(settings, location.exit.lat, location.exit.lon);
+  sky.apply(envState);
+  renderer.toneMappingExposure = sky.output.exposure;
+  fog.color.copy(sky.output.fogColor);
+  fog.density = 2 / envState.visibility;
+  clouds.setCover(envState.cloudCover);
+  clouds.setLight(sky.output.sunColor, 0.35 + 0.65 * sky.output.daylight);
+  clouds.setAltitude(exitPos.y + (envState.cloudCover > 0.6 ? 350 : 700));
+  precipitation.set(envState.precip, envState.precipIntensity);
+  windField.set(envState.windSpeed, envState.windFrom, envState.gustiness, envState.precipIntensity);
 }
-setWind(location.wind.fromDeg, location.wind.speed);
+
+async function useLiveWeather(): Promise<void> {
+  menu.setLiveStatus('Fetching live weather…', true);
+  try {
+    const live = await fetchLiveWeather(location.exit.lat, location.exit.lon);
+    const settings = settingsFromLive(live, envSettings);
+    menu.setEnvironment(settings);
+    applyEnvironment(settings);
+    menu.setLiveStatus(
+      `Now at ${location.name}: ${live.description}, ${live.temperature.toFixed(0)} °C, wind ${live.windSpeed.toFixed(0)} m/s from ${live.windFrom.toFixed(0)}°`,
+    );
+  } catch (err) {
+    menu.setLiveStatus(`Live weather unavailable (${err instanceof Error ? err.message : err})`);
+  }
+}
 
 function setMode(mode: GameMode): void {
   run.mode = mode;
@@ -75,8 +119,15 @@ function setMode(mode: GameMode): void {
 
 async function prepare(): Promise<void> {
   run.phase = 'loading';
+  menu.setLocations(LOCATIONS, location.id);
   menu.showLocation(location);
   setMode(menu.mode);
+  // Site default wind unless the player has chosen otherwise.
+  if (envSettings.windSpeed === 3 && envSettings.windFrom === 270) {
+    envSettings = { ...envSettings, windSpeed: location.wind.speed, windFrom: location.wind.fromDeg };
+  }
+  menu.setEnvironment(envSettings);
+  applyEnvironment(envSettings);
   menu.setLoading('Loading terrain…', false);
   terrain.update(exitPos.x, exitPos.z, performance.now());
   await terrain.waitForArea(exitPos.x, exitPos.z, 1);
@@ -90,6 +141,7 @@ async function prepare(): Promise<void> {
   exitPos.z -= Math.cos(hdg) * location.exitOffset;
   lzPos.y = terrain.getHeight(lzPos.x, lzPos.z) ?? 0;
   landingZone.position.copy(lzPos);
+  applyEnvironment(envSettings); // cloud base depends on the exit altitude
   placeAtExit();
   const lzDist = horizontalDistance(exitPos.x, exitPos.z, lzPos.x, lzPos.z);
   menu.setLoading(`Exit ${exitPos.y.toFixed(0)} m · landing zone ${lzPos.y.toFixed(0)} m, ${(lzDist / 1000).toFixed(1)} km away`, true);
@@ -202,6 +254,7 @@ function frame(now: number): void {
     const toggles = { left: Math.min(1, Math.max(0, -controls.roll) + brake), right: Math.min(1, Math.max(0, controls.roll) + brake) };
     accumulator += dt;
     while (accumulator >= PHYSICS_DT) {
+      windField.sample(body.position, run.time, terrain, wind);
       const hardOpening = canopy.step(PHYSICS_DT, body, toggles, wind);
       body.step(PHYSICS_DT, controls, wind, {
         aeroScale: 1 - canopy.openness,
@@ -228,7 +281,9 @@ function frame(now: number): void {
   syncModel();
   terrain.update(body.position.x, body.position.z, now);
   sky.follow(body.position);
+  clouds.update(body.position, wind, dt);
   rig.update(body, dt, canopy.openness);
+  precipitation.update(camera.position, wind, dt, now / 1000);
   // Keep the camera above the terrain.
   const camGround = terrain.getHeight(camera.position.x, camera.position.z);
   if (camGround !== null && camera.position.y < camGround + 1.5) {
@@ -246,7 +301,7 @@ function frame(now: number): void {
       groundHeight: terrain.getHeight(body.position.x, body.position.z),
       distance: horizontalDistance(body.position.x, body.position.z, exitPos.x, exitPos.z),
       time: run.time,
-      wind: location.wind,
+      wind: { fromDeg: windField.fromDeg, speed: Math.hypot(wind.x, wind.z) },
       terrainPending: terrain.stats().pending,
       canopy: canopy.phase,
       lzDistance: horizontalDistance(body.position.x, body.position.z, lzPos.x, lzPos.z),
