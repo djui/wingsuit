@@ -9,6 +9,8 @@ export interface HudData {
   wind: { fromDeg: number; speed: number };
   terrainPending: number;
   canopy: CanopyPhase;
+  proximity: number;
+  ready: boolean;
   /** Landing zone distance (m) and bearing relative to the flyer's heading (rad, + = right). */
   lzDistance: number;
   lzRelativeBearing: number;
@@ -35,6 +37,7 @@ export class Hud {
   private chute = el('hud-chute');
   private lz = el('hud-lz');
   private lzArrow = el('hud-lz-arrow');
+  private prox = el('hud-prox');
   private help = el('hud-help');
 
   show(visible: boolean): void {
@@ -60,13 +63,21 @@ export class Hud {
     this.chute.classList.toggle('accent', d.canopy !== 'stowed');
     this.lz.textContent = d.lzDistance >= 1000 ? `${(d.lzDistance / 1000).toFixed(2)} km` : `${d.lzDistance.toFixed(0)} m`;
     this.lzArrow.style.transform = `rotate(${(d.lzRelativeBearing * 180) / Math.PI}deg)`;
+    this.prox.textContent = Math.round(d.proximity).toLocaleString();
     const a = d.body.aero;
-    const stalled = a.stalled && d.canopy === 'stowed';
-    this.status.textContent = stalled ? 'STALL' : d.terrainPending > 0 ? `loading terrain (${d.terrainPending})` : '';
+    const stalled = a.stalled && d.canopy === 'stowed' && !d.ready;
+    this.status.textContent = d.ready
+      ? 'ON THE EDGE — Space to jump'
+      : stalled
+        ? 'STALL'
+        : d.terrainPending > 0
+          ? `loading terrain (${d.terrainPending})`
+          : '';
     this.status.classList.toggle('warn', stalled);
-    this.help.textContent =
-      d.canopy === 'stowed'
-        ? 'W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · C camera · R restart'
+    this.help.textContent = d.ready
+      ? 'Space jump · C camera · wheel zoom · R back to menu'
+      : d.canopy === 'stowed'
+        ? 'W/S pitch · A/D roll · Q/E yaw · Shift dive · Z/X roll · F loop · Space parachute · C camera · wheel zoom · R restart'
         : 'A/D toggles · S flare (both toggles) · C camera · R restart';
   }
 }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GameAudio } from './core/audio';
 import { InputManager } from './core/input/manager';
 import { loadScores, submitScore } from './core/scores';
-import { newRunState, targetScore, type GameMode } from './core/state';
+import { newRunState, proximityRate, targetScore, type GameMode } from './core/state';
 import { CameraRig } from './player/cameras';
 import { createFlyerModel } from './player/model';
 import { buildSuitTexture, fileToDataUrl, loadSuitChoice, saveSuitChoice, type SuitChoice } from './player/textures';
@@ -197,45 +197,79 @@ async function prepare(): Promise<void> {
   applySettings(gameSettings);
   void applySuit(suitChoice);
   menu.setLoading('Loading terrain…', false);
+  if (location.exit.altitude === undefined) {
+    // Stand on an elevation grid node so the carved edge starts right at the feet.
+    const snapped = terrain.snapToGrid(exitPos.x, exitPos.z);
+    exitPos.x = snapped.x;
+    exitPos.z = snapped.z;
+    terrain.setCliff({
+      x: exitPos.x,
+      z: exitPos.z,
+      headingRad: THREE.MathUtils.degToRad(location.heading),
+      overhang: location.exitOffset * 2,
+      radius: 400,
+    });
+  }
   terrain.update(exitPos.x, exitPos.z, performance.now());
   await terrain.waitForArea(exitPos.x, exitPos.z, 1);
   await terrain.waitForArea(lzPos.x, lzPos.z, 0);
   const ridge = terrain.getHeight(exitPos.x, exitPos.z);
-  exitPos.y = (location.exit.altitude ?? (ridge ?? 0)) + 1.8;
-  // Step out over the face: DEMs smooth vertical cliffs into steep slopes, so
-  // the exit sits a few metres past the edge at ridge altitude (an overhang).
-  const hdg = THREE.MathUtils.degToRad(location.heading);
-  exitPos.x += Math.sin(hdg) * location.exitOffset;
-  exitPos.z -= Math.cos(hdg) * location.exitOffset;
+  exitPos.y = (location.exit.altitude ?? (ridge ?? 0)) + 0.7;
   lzPos.y = terrain.getHeight(lzPos.x, lzPos.z) ?? 0;
   landingZone.position.copy(lzPos);
   applyEnvironment(envSettings); // cloud base depends on the exit altitude
   placeAtExit();
+  // The flyer's own feet are the reference for ground contact while standing.
+  standAtExit();
   const lzDist = horizontalDistance(exitPos.x, exitPos.z, lzPos.x, lzPos.z);
   menu.setLoading(`Exit ${exitPos.y.toFixed(0)} m · landing zone ${lzPos.y.toFixed(0)} m, ${(lzDist / 1000).toFixed(1)} km away`, true);
   run.phase = 'menu';
 }
 
 function placeAtExit(): void {
-  body.reset(exitPos, location.heading, -25, 5);
+  body.reset(exitPos, location.heading, 0, 0);
   canopy.reset();
   flyer.setCanopy(0);
+  flyer.setStanding(1);
   input.touch.setCanopyMode(false);
   rig.reset();
   syncModel();
   rig.update(body, 1);
 }
 
-function startRun(): void {
-  if (run.phase === 'loading') return;
+/** Stand on the edge, waiting for the jump. */
+function standAtExit(): void {
   placeAtExit();
-  run.phase = 'flying';
+  run.phase = 'ready';
   run.time = 0;
   run.maxSpeed = 0;
   run.peakG = 0;
   run.score = 0;
+  run.proximity = 0;
+  run.path.length = 0;
+}
+
+function startRun(): void {
+  if (run.phase === 'loading') return;
+  standAtExit();
   menu.hide();
   hud.show(true);
+}
+
+/** Push off the edge: a real exit is a hop forward, then the suit does the rest. */
+function jump(): void {
+  if (run.phase !== 'ready') return;
+  run.phase = 'flying';
+  flyer.setStanding(0);
+  body.reset(exitPos, location.heading, -12, 3.5);
+  body.velocity.y += 1.2;
+  audio.unlock();
+}
+
+/** Small safety margin right at the edge line where the carved cliff meets the ridge. */
+function inExitOverhang(): boolean {
+  if (body.position.y > exitPos.y + 2 || body.position.y < exitPos.y - 40) return false;
+  return horizontalDistance(body.position.x, body.position.z, exitPos.x, exitPos.z) < 6;
 }
 
 function finishRun(success: boolean, outcome: string): void {
@@ -247,20 +281,28 @@ function finishRun(success: boolean, outcome: string): void {
   const lines = [outcome];
   let rank = 0;
   if (success) {
-    run.score = run.mode === 'distance' ? Math.round(dist) : targetScore(lzDist);
+    run.score = run.mode === 'distance' ? Math.round(dist) : run.mode === 'target' ? targetScore(lzDist) : Math.round(run.proximity);
     const detail =
       run.mode === 'distance'
         ? `${(dist / 1000).toFixed(2)} km in ${run.time.toFixed(0)} s`
-        : `${lzDist.toFixed(0)} m from centre`;
+        : run.mode === 'target'
+          ? `${lzDist.toFixed(0)} m from centre`
+          : `${Math.round(run.proximity).toLocaleString()} prox in ${run.time.toFixed(0)} s`;
     rank = submitScore(location.id, run.mode, { score: run.score, detail, date: new Date().toISOString().slice(0, 10) });
-    lines.push(run.mode === 'distance' ? `Score ${run.score.toLocaleString()} (metres)` : `Score ${run.score.toLocaleString()} / 1000`);
+    lines.push(
+      run.mode === 'distance'
+        ? `Score ${run.score.toLocaleString()} (metres)`
+        : run.mode === 'target'
+          ? `Score ${run.score.toLocaleString()} / 1000`
+          : `Score ${run.score.toLocaleString()} proximity points`,
+    );
     if (rank === 1) lines.push('New best!');
     else if (rank > 0) lines.push(`Rank #${rank}`);
   } else {
     lines.push('Score 0');
   }
   lines.push(
-    `Distance ${(dist / 1000).toFixed(2)} km · to target ${lzDist >= 1000 ? `${(lzDist / 1000).toFixed(2)} km` : `${lzDist.toFixed(0)} m`}`,
+    `Distance ${(dist / 1000).toFixed(2)} km · to target ${lzDist >= 1000 ? `${(lzDist / 1000).toFixed(2)} km` : `${lzDist.toFixed(0)} m`} · proximity ${Math.round(run.proximity).toLocaleString()}`,
     `Flight ${run.time.toFixed(0)} s · max ${(run.maxSpeed * 3.6).toFixed(0)} km/h · peak ${run.peakG.toFixed(1)} g` +
       (canopy.phase !== 'stowed' ? ` · opened at ${canopy.deployAltitude.toFixed(0)} m, ${(canopy.deploySpeed * 3.6).toFixed(0)} km/h` : ''),
   );
@@ -327,6 +369,11 @@ function frame(now: number): void {
   if (actions.mute) applySettings({ ...gameSettings, audio: !gameSettings.audio });
   if (actions.restart && run.phase !== 'loading') startRun();
   if (actions.start && (run.phase === 'menu' || run.phase === 'crashed' || run.phase === 'landed')) startRun();
+  else if ((actions.start || actions.deploy) && run.phase === 'ready') {
+    jump();
+    actions.deploy = false; // the same press must not also pull the chute
+  }
+  if (frameInput.zoom !== 0) rig.zoomBy(frameInput.zoom * dt * 1.5);
   if (input.gamepad.connected !== gamepadWasConnected) {
     gamepadWasConnected = input.gamepad.connected;
     menu.setGamepad(input.gamepad.connected);
@@ -334,6 +381,12 @@ function frame(now: number): void {
 
   if (run.phase === 'flying') {
     if (actions.deploy && canopy.deploy(body)) audio.opening();
+    if (canopy.phase === 'stowed') {
+      if (actions.rollLeft) body.startManeuver('rollLeft');
+      if (actions.rollRight) body.startManeuver('rollRight');
+      if (actions.loop) body.startManeuver('loop');
+      if (actions.frontFlip) body.startManeuver('frontFlip');
+    }
     // Under canopy the same axes drive the toggles: roll = left/right, pitch-up or flare = both.
     const brake = Math.max(0, controls.pitch, frameInput.flare);
     const toggles = { left: Math.min(1, Math.max(0, -controls.roll) + brake), right: Math.min(1, Math.max(0, controls.roll) + brake) };
@@ -357,12 +410,21 @@ function frame(now: number): void {
         break;
       }
       const ground = surfaceHeight(body.position.x, body.position.z);
-      if (ground !== null && body.position.y < ground + BODY_CLEARANCE) {
-        groundContact(ground);
-        break;
+      if (ground !== null) {
+        if (canopy.phase === 'stowed') {
+          run.proximity += proximityRate(body.position.y - ground, body.aero.airspeed) * PHYSICS_DT;
+        }
+        if (body.position.y < ground + BODY_CLEARANCE && !inExitOverhang()) {
+          groundContact(ground);
+          break;
+        }
       }
     }
     run.maxSpeed = Math.max(run.maxSpeed, body.velocity.length());
+    // Path sample every ~0.25 s for the results minimap.
+    if (run.path.length === 0 || run.time - run.path[run.path.length - 4] > 0.25) {
+      run.path.push(run.time, body.position.x, body.position.y, body.position.z);
+    }
   }
 
   syncModel();
@@ -414,6 +476,8 @@ function frame(now: number): void {
       wind: { fromDeg: windField.fromDeg, speed: Math.hypot(wind.x, wind.z) },
       terrainPending: terrain.stats().pending,
       canopy: canopy.phase,
+      proximity: run.proximity,
+      ready: run.phase === 'ready',
       lzDistance: horizontalDistance(body.position.x, body.position.z, lzPos.x, lzPos.z),
       lzRelativeBearing: Math.atan2(Math.sin(lzBearing - heading), Math.cos(lzBearing - heading)),
     });

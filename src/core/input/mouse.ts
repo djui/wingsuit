@@ -1,5 +1,4 @@
-import type { Controls } from '../../sim/wingsuit';
-import type { Actions, InputSource } from './types';
+import type { Actions, InputSource, RawInput } from './types';
 
 /**
  * Mouse steering: cursor offset from the screen centre maps to roll (x) and
@@ -34,8 +33,8 @@ export class MouseInput implements InputSource {
     window.addEventListener('blur', () => (this.buttons = 0));
   }
 
-  read(): Controls & { flare: number } {
-    if (!this.enabled) return { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0 };
+  read(): RawInput {
+    if (!this.enabled) return { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0, zoom: 0 };
     const dead = 0.06;
     const shape = (v: number) => {
       const a = Math.abs(v);
@@ -50,6 +49,7 @@ export class MouseInput implements InputSource {
       yaw: 0,
       dive: this.buttons & 1 ? 1 : 0,
       flare: this.buttons & 1 ? 1 : 0,
+      zoom: 0,
     };
   }
 

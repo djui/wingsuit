@@ -59,6 +59,8 @@ export function airDensity(altitude: number): number {
   return p / (R * T);
 }
 
+export type Maneuver = 'rollLeft' | 'rollRight' | 'loop' | 'frontFlip';
+
 export interface StepOptions {
   /** Scales wingsuit aerodynamic forces and stability (0 = wings collapsed). */
   aeroScale?: number;
@@ -98,6 +100,17 @@ export class FlyerBody {
   readonly rates = new THREE.Vector3();
   readonly aero: AeroState = { airspeed: 0, alpha: 0, beta: 0, cl: 0, cd: 0, stalled: false, gForce: 1 };
   config: AeroConfig = WINGSUIT;
+  /** Scripted manoeuvre in progress (barrel roll or loop). */
+  maneuver: Maneuver | null = null;
+  private maneuverAngle = 0;
+
+  /** Start a barrel roll or loop; ignored if one is already running. */
+  startManeuver(m: Maneuver): boolean {
+    if (this.maneuver) return false;
+    this.maneuver = m;
+    this.maneuverAngle = 0;
+    return true;
+  }
 
   /** Place at position with a compass heading (deg) and pitch (deg, + nose up). */
   reset(position: THREE.Vector3, headingDeg: number, pitchDeg: number, speed: number): void {
@@ -107,6 +120,7 @@ export class FlyerBody {
     this.quaternion.setFromEuler(_euler);
     this.velocity.set(0, 0, -speed).applyQuaternion(this.quaternion);
     this.rates.set(0, 0, 0);
+    this.maneuver = null;
   }
 
   forward(target = new THREE.Vector3()): THREE.Vector3 {
@@ -187,11 +201,24 @@ export class FlyerBody {
     // levelling from a right bank needs a positive (roll-left) rate.
     const targetRoll = -controls.roll * c.rollRate - 1.2 * _right.y * airFactor;
     const k = 1 - Math.exp(-dt * 6);
-    this.rates.x += (targetPitch - this.rates.x) * k;
-    this.rates.y += (targetYaw - this.rates.y) * k;
-    this.rates.z += (targetRoll - this.rates.z) * k;
-    // Mild roll damping so the flyer does not spin forever without input.
-    if (Math.abs(controls.roll) < 0.05) this.rates.z *= Math.exp(-dt * 2.5);
+    if (this.maneuver && aeroScale > 0.5) {
+      // Scripted rates override stability for one full rotation.
+      const m = this.maneuver;
+      const rollRate = m === 'rollLeft' ? 4.2 : m === 'rollRight' ? -4.2 : 0;
+      const pitchRate = m === 'loop' ? 2.4 : m === 'frontFlip' ? -2.4 : 0;
+      this.rates.x += (pitchRate - this.rates.x) * (1 - Math.exp(-dt * 10));
+      this.rates.z += (rollRate - this.rates.z) * (1 - Math.exp(-dt * 10));
+      this.rates.y += (0 - this.rates.y) * k;
+      this.maneuverAngle += Math.abs(rollRate || pitchRate) * dt;
+      if (this.maneuverAngle >= Math.PI * 2) this.maneuver = null;
+    } else {
+      this.maneuver = null;
+      this.rates.x += (targetPitch - this.rates.x) * k;
+      this.rates.y += (targetYaw - this.rates.y) * k;
+      this.rates.z += (targetRoll - this.rates.z) * k;
+      // Mild roll damping so the flyer does not spin forever without input.
+      if (Math.abs(controls.roll) < 0.05) this.rates.z *= Math.exp(-dt * 2.5);
+    }
 
     if (opts.orientation) {
       // Hanging under a canopy: rates die out and the body follows the canopy.

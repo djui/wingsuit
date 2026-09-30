@@ -17,6 +17,7 @@
         <div class="row"><span class="label">V/S</span><span id="hud-vs" class="value">0 m/s</span></div>
         <div class="row"><span class="label">L/D</span><span id="hud-glide" class="value">—</span></div>
         <div class="row"><span class="label">G</span><span id="hud-g" class="value">1.0 g</span></div>
+        <div class="row"><span class="label">PROX</span><span id="hud-prox" class="value">0</span></div>
       </div>
       <div class="panel right">
         <div class="row"><span class="label">DIST</span><span id="hud-dist" class="value">0 m</span></div>
@@ -38,6 +39,11 @@
         <button data-action="flare" data-hold="true" class="tb canopy-only">FLARE</button>
         <button data-action="yawL" data-hold="true" class="tb fly small">◀ YAW</button>
         <button data-action="yawR" data-hold="true" class="tb fly small">YAW ▶</button>
+        <button data-action="rollLeft" class="tb fly small">↺ ROLL</button>
+        <button data-action="rollRight" class="tb fly small">ROLL ↻</button>
+        <button data-action="loop" class="tb fly small">LOOP</button>
+        <button data-action="zoomIn" data-hold="true" class="tb small">ZOOM +</button>
+        <button data-action="zoomOut" data-hold="true" class="tb small">ZOOM −</button>
         <button data-action="camera" class="tb small">CAM</button>
         <button data-action="restart" class="tb small">RESET</button>
       </div>
@@ -57,6 +63,7 @@
             <div class="modes">
               <label><input type="radio" name="mode" value="distance" checked /> Distance — glide as far as you can</label>
               <label><input type="radio" name="mode" value="target" /> Target — land on the bullseye</label>
+              <label><input type="radio" name="mode" value="proximity" /> Proximity — hug the terrain at speed</label>
             </div>
             <p id="menu-progress"></p>
             <button id="menu-start" disabled>Loading…</button>
@@ -64,7 +71,7 @@
             <h2>Wingsuit</h2>
             <div id="menu-suits" class="suits"></div>
             <label class="upload">Custom image <input id="suit-upload" type="file" accept="image/*" /></label>
-            <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · under canopy: A/D toggles, S flare · C camera · R restart · M mute</p>
+            <p class="controls">Space jump / parachute · W/S pitch · A/D roll · Q/E yaw · Shift dive · Z/X barrel roll · F loop · G front flip · under canopy: A/D toggles, S flare · C camera · wheel or +/− zoom · R restart · M mute</p>
           </section>
           <aside class="col env">
             <h2>Conditions</h2>

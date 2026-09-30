@@ -12,6 +12,7 @@ export class InputManager {
   readonly gamepad = new GamepadInput();
   readonly touch = new TouchInput();
   private smoothed: Controls & { flare: number } = { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0 };
+  private zoom = 0;
 
   constructor(canvas: HTMLElement) {
     this.mouse = new MouseInput(canvas);
@@ -19,7 +20,7 @@ export class InputManager {
 
   read(dt: number): InputFrame {
     const sources = [this.keyboard, this.mouse, this.gamepad, this.touch];
-    const raw = { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0 };
+    const raw = { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0, zoom: 0 };
     const actions: Actions = { ...NO_ACTIONS };
     for (const s of sources) {
       const r = s.read();
@@ -28,6 +29,7 @@ export class InputManager {
       raw.yaw += r.yaw;
       raw.dive = Math.max(raw.dive, r.dive);
       raw.flare = Math.max(raw.flare, r.flare);
+      raw.zoom += r.zoom;
       const a = s.actions();
       for (const k of Object.keys(actions) as (keyof Actions)[]) if (a[k]) actions[k] = true;
     }
@@ -39,6 +41,7 @@ export class InputManager {
     s.yaw += (clamp(raw.yaw) - s.yaw) * k;
     s.dive += (raw.dive - s.dive) * k;
     s.flare += (raw.flare - s.flare) * k;
-    return { controls: { pitch: s.pitch, roll: s.roll, yaw: s.yaw, dive: s.dive }, flare: s.flare, actions };
+    this.zoom = clamp(raw.zoom);
+    return { controls: { pitch: s.pitch, roll: s.roll, yaw: s.yaw, dive: s.dive }, flare: s.flare, zoom: this.zoom, actions };
   }
 }

@@ -32,6 +32,8 @@ export class CameraRig {
   private returnTimer = 0;
   private initialised = false;
   private cinePos = new THREE.Vector3();
+  /** Chase distance in metres (wheel / zoom axis). */
+  chaseDistance = 7.5;
   private cineValid = false;
   private shakeTime = 0;
 
@@ -40,6 +42,22 @@ export class CameraRig {
     canvas: HTMLElement,
   ) {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener(
+      'wheel',
+      (e) => {
+        // Ignore wheel over the menu card so its lists can scroll.
+        if ((e.target as HTMLElement | null)?.closest('#menu')) return;
+        e.preventDefault();
+        this.zoomBy(Math.sign(e.deltaY) * 0.12);
+      },
+      { passive: false },
+    );
+    try {
+      const saved = Number(localStorage.getItem('wingsuit.zoom'));
+      if (saved > 0) this.chaseDistance = saved;
+    } catch {
+      /* ignore */
+    }
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') return;
       const orbitButton = this.mouseSteering ? 2 : 0;
@@ -62,6 +80,16 @@ export class CameraRig {
         this.orbitPitch = THREE.MathUtils.clamp(this.orbitPitch + e.movementY * 0.005, -0.6, 1.2);
       }
     });
+  }
+
+  /** Multiplicative zoom: positive = further away. */
+  zoomBy(amount: number): void {
+    this.chaseDistance = THREE.MathUtils.clamp(this.chaseDistance * Math.exp(amount), 2.5, 60);
+    try {
+      localStorage.setItem('wingsuit.zoom', this.chaseDistance.toFixed(2));
+    } catch {
+      /* ignore */
+    }
   }
 
   toggle(): void {
@@ -130,11 +158,11 @@ export class CameraRig {
     const dir = speed > 3 ? _target.copy(body.velocity).normalize() : _target.copy(_fwd);
     _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw);
     dir.applyQuaternion(_q);
-    const dist = 7.5 + 10 * canopy;
+    const dist = this.chaseDistance * (1 + 1.3 * canopy);
     _desired
       .copy(body.position)
       .addScaledVector(dir, -dist * Math.cos(this.orbitPitch))
-      .add(new THREE.Vector3(0, dist * Math.sin(this.orbitPitch) + 1.0 + 3 * canopy, 0));
+      .add(new THREE.Vector3(0, dist * Math.sin(this.orbitPitch) + 0.13 * dist + 3 * canopy, 0));
 
     if (!this.initialised) {
       cam.position.copy(_desired);

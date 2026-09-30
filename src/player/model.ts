@@ -8,6 +8,8 @@ export interface FlyerModel {
   setTexture(tex: THREE.Texture): void;
   /** Animate control surfaces: pitch/roll inputs bend the wings slightly. */
   setControls(pitch: number, roll: number, dive: number): void;
+  /** 1 = standing upright on the exit, 0 = flying pose. */
+  setStanding(f: number): void;
 }
 
 /**
@@ -157,6 +159,7 @@ export function createFlyerModel(): FlyerModel {
   const proneQ = new THREE.Quaternion();
   const hangQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI, 0, 'YXZ'));
   let openness = 0;
+  let standing = 0;
 
   return {
     group,
@@ -175,8 +178,22 @@ export function createFlyerModel(): FlyerModel {
       suit.map = tex;
       suit.needsUpdate = true;
     },
+    setStanding(f: number) {
+      standing = THREE.MathUtils.clamp(f, 0, 1);
+      if (standing > 0) {
+        pose.quaternion.slerpQuaternions(proneQ, hangQ, standing);
+        pose.position.y = 0.9 * standing;
+        // Arms down along the body, legs together.
+        rightArm.rotation.z = -standing * 1.3;
+        leftArm.rotation.z = standing * 1.3;
+        rightArm.rotation.y = -armSweep * (1 - standing) - standing * 0.4;
+        leftArm.rotation.y = armSweep * (1 - standing) + standing * 0.4;
+        rightLeg.rotation.y = legSpread * (1 - standing);
+        leftLeg.rotation.y = -legSpread * (1 - standing);
+      }
+    },
     setControls(pitch: number, roll: number, dive: number) {
-      if (openness > 0.5) return;
+      if (openness > 0.5 || standing > 0) return;
       // Dive: sweep the arms back; roll: dip one arm; pitch: legs up/down.
       const sweep = armSweep + dive * 0.6;
       rightArm.rotation.y = -sweep;

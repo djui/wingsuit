@@ -1,5 +1,4 @@
-import type { Controls } from '../../sim/wingsuit';
-import type { Actions, InputSource } from './types';
+import type { Actions, InputSource, RawInput } from './types';
 
 /**
  * On-screen controls: a virtual stick on the left half of the screen and
@@ -78,14 +77,15 @@ export class TouchInput implements InputSource {
     this.root.classList.toggle('canopy', on);
   }
 
-  read(): Controls & { flare: number } {
-    if (!this.enabled) return { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0 };
+  read(): RawInput {
+    if (!this.enabled) return { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0, zoom: 0 };
     return {
       roll: this.axis.x,
       pitch: this.axis.y,
       yaw: (this.held.has('yawR') ? 1 : 0) - (this.held.has('yawL') ? 1 : 0),
       dive: this.held.has('dive') ? 1 : 0,
       flare: this.held.has('flare') ? 1 : 0,
+      zoom: (this.held.has('zoomOut') ? 1 : 0) - (this.held.has('zoomIn') ? 1 : 0),
     };
   }
 
@@ -94,6 +94,10 @@ export class TouchInput implements InputSource {
       deploy: this.tapped.has('deploy'),
       camera: this.tapped.has('camera'),
       restart: this.tapped.has('restart'),
+      rollLeft: this.tapped.has('rollLeft'),
+      rollRight: this.tapped.has('rollRight'),
+      loop: this.tapped.has('loop'),
+      start: this.tapped.has('deploy'),
     };
     this.tapped.clear();
     return a;

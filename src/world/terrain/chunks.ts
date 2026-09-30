@@ -29,6 +29,23 @@ interface Chunk {
   ready: Promise<void>;
 }
 
+/**
+ * Cliff carve: elevation data smooths vertical walls into steep slopes. In a
+ * cone in front of a cliff exit the natural slope profile is pulled back
+ * toward the edge by `overhang` metres, so the face drops vertically at the
+ * edge and then follows the real slope. The pull-back fades to zero by
+ * `radius` and toward the cone's sides. Applied to tiles as they load.
+ */
+export interface CliffCarve {
+  x: number;
+  z: number;
+  headingRad: number;
+  /** Metres the slope profile is pulled back at the edge. */
+  overhang: number;
+  /** Distance over which the carve fades out. */
+  radius: number;
+}
+
 export interface TerrainStats {
   chunks: number;
   built: number;
@@ -41,12 +58,81 @@ export class TerrainManager {
   private tiles = new Map<string, ElevationTile>();
   private lastCenter = { tx: NaN, ty: NaN };
   private lastUpdate = 0;
+  private cliff: CliffCarve | null = null;
+  private carved = new Set<string>();
 
   constructor(
     private readonly origin: GeoOrigin,
     private readonly loadRadius: number,
   ) {
     this.group.name = 'terrain';
+  }
+
+  /** Must be set before tiles load; see CliffCarve. */
+  setCliff(c: CliffCarve | null): void {
+    this.cliff = c;
+  }
+
+  /** Nearest elevation grid node to scene x/z (so an exit can stand on a node). */
+  snapToGrid(x: number, z: number): { x: number; z: number } {
+    const { fx, fy } = this.sceneToTile(x, z);
+    const gx = Math.round(fx * TILE_SIZE) / TILE_SIZE;
+    const gy = Math.round(fy * TILE_SIZE) / TILE_SIZE;
+    const ll = tileToLonLat(gx, gy, ELEVATION_ZOOM);
+    return this.origin.toLocal(ll.lat, ll.lon);
+  }
+
+  private carveTile(tile: ElevationTile): void {
+    const c = this.cliff;
+    if (!c || this.carved.has(tileKey(tile.z, tile.x, tile.y))) return;
+    this.carved.add(tileKey(tile.z, tile.x, tile.y));
+    // Quick reject: is the exit anywhere near this tile?
+    const nw = tileToLonLat(tile.x, tile.y, tile.z);
+    const se = tileToLonLat(tile.x + 1, tile.y + 1, tile.z);
+    const a = this.origin.toLocal(nw.lat, nw.lon);
+    const b = this.origin.toLocal(se.lat, se.lon);
+    const margin = c.radius + c.overhang;
+    if (c.x < a.x - margin || c.x > b.x + margin || c.z < a.z - margin || c.z > b.z + margin) return;
+    const fx = Math.sin(c.headingRad);
+    const fz = -Math.cos(c.headingRad);
+    // Sample the natural profile from a snapshot so the shift does not compound.
+    const snapshot = tile.heights.slice();
+    const natural = (x: number, z: number): number | null => {
+      const t = this.sceneToTile(x, z);
+      if (Math.floor(t.fx) === tile.x && Math.floor(t.fy) === tile.y) {
+        const px = (t.fx - tile.x) * TILE_SIZE;
+        const py = (t.fy - tile.y) * TILE_SIZE;
+        const i0 = Math.min(TILE_SIZE - 2, Math.floor(px));
+        const j0 = Math.min(TILE_SIZE - 2, Math.floor(py));
+        const u = px - i0;
+        const v = py - j0;
+        const s = (i: number, j: number) => snapshot[j * TILE_SIZE + i];
+        return (s(i0, j0) * (1 - u) + s(i0 + 1, j0) * u) * (1 - v) + (s(i0, j0 + 1) * (1 - u) + s(i0 + 1, j0 + 1) * u) * v;
+      }
+      return this.getHeight(x, z);
+    };
+    for (let py = 0; py < TILE_SIZE; py++) {
+      for (let px = 0; px < TILE_SIZE; px++) {
+        const ll = tileToLonLat(tile.x + px / TILE_SIZE, tile.y + py / TILE_SIZE, tile.z);
+        const p = this.origin.toLocal(ll.lat, ll.lon);
+        const dx = p.x - c.x;
+        const dz = p.z - c.z;
+        const forward = dx * fx + dz * fz;
+        if (forward < 1) continue; // the exit node and everything behind it stay
+        const r = Math.hypot(dx, dz);
+        if (r > c.radius) continue;
+        const cosAng = forward / r;
+        if (cosAng < 0.5) continue; // outside the 60° half-angle cone
+        const angular = ((cosAng - 0.5) / 0.5) ** 2;
+        const radial = 1 - (r / c.radius) ** 2;
+        const shift = c.overhang * angular * radial;
+        if (shift < 0.5) continue;
+        const ahead = natural(p.x + fx * shift, p.z + fz * shift);
+        if (ahead === null) continue;
+        const i = py * TILE_SIZE + px;
+        tile.heights[i] = Math.min(tile.heights[i], ahead);
+      }
+    }
   }
 
   /** Scene x/z -> zoom-13 tile coords. */
@@ -204,6 +290,7 @@ export class TerrainManager {
       ]);
       if (chunk.disposed) return;
       for (const t of tiles) if (t) this.tiles.set(tileKey(t.z, t.x, t.y), t);
+      for (const t of tiles) if (t) this.carveTile(t);
 
       const material = new THREE.MeshLambertMaterial({ color: 0x808080 });
       const mesh = new THREE.Mesh(this.buildGeometry(tx, ty, chunk.step), material);

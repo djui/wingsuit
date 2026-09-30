@@ -1,5 +1,4 @@
-import type { Controls } from '../../sim/wingsuit';
-import type { Actions, InputSource } from './types';
+import type { Actions, InputSource, RawInput } from './types';
 
 /** Keyboard axes and one-shot actions. */
 export class KeyboardInput implements InputSource {
@@ -35,13 +34,14 @@ export class KeyboardInput implements InputSource {
     return v;
   }
 
-  read(): Controls & { flare: number } {
+  read(): RawInput {
     return {
       pitch: this.axis(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']),
       roll: this.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']),
       yaw: this.axis(['KeyQ'], ['KeyE']),
       dive: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 1 : 0,
       flare: 0,
+      zoom: this.axis(['Equal', 'NumpadAdd', 'BracketLeft'], ['Minus', 'NumpadSubtract', 'BracketRight']),
     };
   }
 
@@ -52,6 +52,10 @@ export class KeyboardInput implements InputSource {
       restart: this.consume('KeyR'),
       start: this.consume('Enter'),
       mute: this.consume('KeyM'),
+      rollLeft: this.consume('KeyZ'),
+      rollRight: this.consume('KeyX'),
+      loop: this.consume('KeyF'),
+      frontFlip: this.consume('KeyG'),
     };
   }
 }
