@@ -48,9 +48,22 @@ wobbles, and rises where it blows up a slope.
 | Deploy parachute | Space |
 | Canopy toggles (left / right) | A / D |
 | Flare (both toggles) | S |
-| Camera (chase / first person) | C |
+| Camera (chase / first person / cinematic) | C |
 | Restart | R |
-| Orbit chase camera | drag with mouse |
+| Mute | M |
+| Orbit chase camera / look around in first person | drag with mouse (right button when mouse steering is on) |
+
+Mouse steering (settings): cursor offset from centre is the stick, left button
+dives (or flares under canopy), middle button deploys. Gamepad: left stick
+pitch/roll, bumpers yaw, right trigger dive, A chute, B flare, Y camera, Start
+restart. Touch: virtual stick on the left half of the screen, buttons on the
+right; enabled automatically on touch devices.
+
+## Wingsuit
+
+Pick a suit texture in the menu (colours, patterns, flags) or upload your own
+image. The whole texture is mapped across the wings and body of the
+procedural flyer. Sound is procedural (wind, canopy flutter, rain, impacts).
 
 ## Game modes
 

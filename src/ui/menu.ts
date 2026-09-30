@@ -3,6 +3,13 @@ import type { GameMode } from '../core/state';
 import type { EnvironmentSettings, Precipitation, SkyPreset } from '../world/environment';
 import type { Location } from '../world/locations';
 import type { TimePreset } from '../world/sky/sun';
+import { presetSwatch, SUIT_PRESETS, type SuitChoice } from '../player/textures';
+
+export interface GameSettings {
+  mouseSteering: boolean;
+  touchControls: boolean;
+  audio: boolean;
+}
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -16,6 +23,9 @@ export interface MenuCallbacks {
   onEnvironment: (settings: EnvironmentSettings) => void;
   onLive: () => void;
   onLocation: (id: string) => void;
+  onSuit: (choice: SuitChoice) => void;
+  onSuitUpload: (file: File) => void;
+  onSettings: (settings: GameSettings) => void;
 }
 
 export class Menu {
@@ -39,6 +49,12 @@ export class Menu {
   private windFromLabel = el('env-wind-from-label');
   private liveButton = el<HTMLButtonElement>('env-live');
   private liveStatus = el('env-live-status');
+  private suits = el('menu-suits');
+  private suitUpload = el<HTMLInputElement>('suit-upload');
+  private setMouse = el<HTMLInputElement>('set-mouse');
+  private setTouch = el<HTMLInputElement>('set-touch');
+  private setAudio = el<HTMLInputElement>('set-audio');
+  private gamepadStatus = el('set-gamepad');
 
   constructor(private readonly cb: MenuCallbacks) {
     this.button.addEventListener('click', () => this.cb.onStart());
@@ -56,6 +72,51 @@ export class Menu {
       c.addEventListener('input', onEnv);
     }
     this.liveButton.addEventListener('click', () => this.cb.onLive());
+    this.suitUpload.addEventListener('change', () => {
+      const f = this.suitUpload.files?.[0];
+      if (f) this.cb.onSuitUpload(f);
+    });
+    for (const c of [this.setMouse, this.setTouch, this.setAudio]) {
+      c.addEventListener('change', () => this.cb.onSettings(this.settings));
+    }
+  }
+
+  get settings(): GameSettings {
+    return { mouseSteering: this.setMouse.checked, touchControls: this.setTouch.checked, audio: this.setAudio.checked };
+  }
+
+  setSettings(s: GameSettings): void {
+    this.setMouse.checked = s.mouseSteering;
+    this.setTouch.checked = s.touchControls;
+    this.setAudio.checked = s.audio;
+  }
+
+  setGamepad(connected: boolean): void {
+    this.gamepadStatus.textContent = connected ? 'Gamepad connected: left stick pitch/roll, bumpers yaw, RT dive, A chute, B flare, Y camera, Start restart' : 'No gamepad detected (press a button)';
+  }
+
+  setSuits(choice: SuitChoice): void {
+    this.suits.innerHTML = '';
+    for (const p of SUIT_PRESETS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `suit${choice.presetId === p.id ? ' current' : ''}`;
+      b.title = p.name;
+      b.appendChild(presetSwatch(p));
+      b.addEventListener('click', () => this.cb.onSuit({ ...choice, presetId: p.id }));
+      this.suits.appendChild(b);
+    }
+    if (choice.customImage) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `suit${choice.presetId === 'custom' ? ' current' : ''}`;
+      b.title = 'Custom image';
+      const img = document.createElement('img');
+      img.src = choice.customImage;
+      b.appendChild(img);
+      b.addEventListener('click', () => this.cb.onSuit({ ...choice, presetId: 'custom' }));
+      this.suits.appendChild(b);
+    }
   }
 
   get mode(): GameMode {

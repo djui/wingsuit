@@ -29,6 +29,20 @@
       <div id="hud-help" class="help"></div>
     </div>
 
+    <div id="touch" class="hidden">
+      <div id="touch-zone"></div>
+      <div id="touch-stick"><div id="touch-knob"></div></div>
+      <div class="touch-buttons">
+        <button data-action="deploy" class="tb big">CHUTE</button>
+        <button data-action="dive" data-hold="true" class="tb fly">DIVE</button>
+        <button data-action="flare" data-hold="true" class="tb canopy-only">FLARE</button>
+        <button data-action="yawL" data-hold="true" class="tb fly small">◀ YAW</button>
+        <button data-action="yawR" data-hold="true" class="tb fly small">YAW ▶</button>
+        <button data-action="camera" class="tb small">CAM</button>
+        <button data-action="restart" class="tb small">RESET</button>
+      </div>
+    </div>
+
     <div id="menu">
       <div class="card wide">
         <div class="columns">
@@ -47,7 +61,10 @@
             <p id="menu-progress"></p>
             <button id="menu-start" disabled>Loading…</button>
             <div id="menu-scores" class="scores"></div>
-            <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · under canopy: A/D toggles, S flare · C camera · R restart</p>
+            <h2>Wingsuit</h2>
+            <div id="menu-suits" class="suits"></div>
+            <label class="upload">Custom image <input id="suit-upload" type="file" accept="image/*" /></label>
+            <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · under canopy: A/D toggles, S flare · C camera · R restart · M mute</p>
           </section>
           <aside class="col env">
             <h2>Conditions</h2>
@@ -88,6 +105,11 @@
             </label>
             <button id="env-live" type="button" class="secondary">Use live weather</button>
             <p id="env-live-status" class="muted small"></p>
+            <h2>Settings</h2>
+            <label class="check"><input id="set-mouse" type="checkbox" /> Mouse steering (left button dives / flares, middle deploys, right-drag looks)</label>
+            <label class="check"><input id="set-touch" type="checkbox" /> Touch controls</label>
+            <label class="check"><input id="set-audio" type="checkbox" checked /> Sound</label>
+            <p id="set-gamepad" class="muted small">No gamepad detected</p>
           </aside>
         </div>
       </div>

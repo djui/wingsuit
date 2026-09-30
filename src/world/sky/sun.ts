@@ -7,22 +7,16 @@ export interface CelestialPosition {
   azimuth: number;
 }
 
-const RAD = 180 / Math.PI;
-
-/** SunCalc azimuth is measured from south, positive westward. */
-function toCompass(azimuthRad: number): number {
-  return (azimuthRad * RAD + 180 + 360) % 360;
-}
-
+// suncalc 2.x returns degrees, with azimuth as compass bearing (0 = north).
 export function sunPosition(date: Date, lat: number, lon: number): CelestialPosition {
   const p = SunCalc.getPosition(date, lat, lon);
-  return { elevation: p.altitude * RAD, azimuth: toCompass(p.azimuth) };
+  return { elevation: p.altitude, azimuth: (p.azimuth + 360) % 360 };
 }
 
 export function moonPosition(date: Date, lat: number, lon: number): CelestialPosition & { fraction: number } {
   const p = SunCalc.getMoonPosition(date, lat, lon);
   const illum = SunCalc.getMoonIllumination(date);
-  return { elevation: p.altitude * RAD, azimuth: toCompass(p.azimuth), fraction: illum.fraction };
+  return { elevation: p.altitude, azimuth: (p.azimuth + 360) % 360, fraction: illum.fraction };
 }
 
 export type TimePreset = 'dawn' | 'morning' | 'noon' | 'afternoon' | 'sunset' | 'night' | 'custom' | 'live';

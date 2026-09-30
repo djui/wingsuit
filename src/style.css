@@ -95,3 +95,38 @@ button.secondary:disabled { opacity: 0.5; }
   .columns { grid-template-columns: 1fr; }
   #menu-locations { max-height: 30vh; }
 }
+
+/* Phase 4: suits, settings, touch controls */
+.suits { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0; }
+.suit { width: 44px; height: 44px; border-radius: 8px; border: 2px solid transparent; padding: 0; overflow: hidden; background: #000; cursor: pointer; }
+.suit canvas, .suit img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.suit.current { border-color: var(--accent); }
+.upload { font-size: 12px; color: var(--muted); display: block; margin: 4px 0 8px; }
+.upload input { font-size: 12px; }
+.col.env label.check { flex-direction: row; align-items: flex-start; gap: 8px; font-size: 12px; }
+.col.env label.check input { width: auto; flex-basis: auto; margin-top: 2px; }
+
+#touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+#touch-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 55%; pointer-events: auto; touch-action: none; }
+#touch-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08); display: none; }
+#touch-stick.active { display: block; }
+#touch-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); }
+.touch-buttons { position: absolute; right: 12px; bottom: 60px; display: grid; grid-template-columns: repeat(2, 84px); gap: 10px; pointer-events: auto; }
+.tb { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; height: 60px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.3); background: rgba(8,12,20,0.55); color: var(--text); font: 700 13px/1 inherit; font-family: inherit; letter-spacing: 0.06em; }
+.tb.big { grid-column: span 2; height: 70px; background: rgba(255,180,84,0.35); border-color: var(--accent); }
+.tb.small { height: 44px; font-size: 11px; }
+.tb.down { background: rgba(255,255,255,0.35); }
+.tb.canopy-only { display: none; }
+#touch.canopy .tb.canopy-only { display: block; }
+#touch.canopy .tb.fly, #touch.canopy .tb.big { display: none; }
+
+@media (max-width: 700px) {
+  .panel { min-width: 120px; padding: 6px 10px; }
+  .row { line-height: 1.35; gap: 8px; }
+  .label { font-size: 10px; }
+  .value { font-size: 12px; }
+  .help { display: none; }
+  #attribution { font-size: 8px; }
+  .card.wide { padding: 14px; }
+  .card h1 { font-size: 22px; }
+}

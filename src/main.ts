@@ -1,13 +1,15 @@
 import * as THREE from 'three';
-import { KeyboardInput } from './core/input/keyboard';
+import { GameAudio } from './core/audio';
+import { InputManager } from './core/input/manager';
 import { loadScores, submitScore } from './core/scores';
 import { newRunState, targetScore, type GameMode } from './core/state';
 import { CameraRig } from './player/cameras';
 import { createFlyerModel } from './player/model';
+import { buildSuitTexture, fileToDataUrl, loadSuitChoice, saveSuitChoice, type SuitChoice } from './player/textures';
 import { CanopySystem } from './sim/canopy';
 import { FlyerBody } from './sim/wingsuit';
 import { Hud } from './ui/hud';
-import { Menu } from './ui/menu';
+import { Menu, type GameSettings } from './ui/menu';
 import { loadEnvironmentSettings, saveEnvironmentSettings, type EnvironmentSettings, type EnvironmentState } from './world/environment';
 import { GeoOrigin, horizontalDistance } from './world/geo';
 import { createLandingZone } from './world/landingZone';
@@ -56,7 +58,18 @@ scene.add(flyer.group);
 const body = new FlyerBody();
 const canopy = new CanopySystem();
 const rig = new CameraRig(camera, canvas);
-const input = new KeyboardInput();
+const input = new InputManager(canvas);
+const audio = new GameAudio();
+let suitChoice: SuitChoice = loadSuitChoice();
+let suitTexture: THREE.CanvasTexture | undefined;
+const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+let gameSettings: GameSettings = { mouseSteering: false, touchControls: coarsePointer, audio: audio.enabled };
+try {
+  const raw = localStorage.getItem('wingsuit.settings');
+  if (raw) gameSettings = { ...gameSettings, ...(JSON.parse(raw) as Partial<GameSettings>) };
+} catch {
+  /* ignore */
+}
 const hud = new Hud();
 const run = newRunState();
 const wind = new THREE.Vector3();
@@ -72,7 +85,44 @@ const menu = new Menu({
     localStorage.setItem('wingsuit.location', id);
     window.location.search = `?loc=${id}`;
   },
+  onSuit: (choice) => void applySuit(choice),
+  onSuitUpload: async (file) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      await applySuit({ presetId: 'custom', customImage: dataUrl });
+    } catch (err) {
+      console.warn('suit upload failed', err);
+    }
+  },
+  onSettings: (settings) => applySettings(settings),
 });
+
+async function applySuit(choice: SuitChoice): Promise<void> {
+  suitChoice = choice;
+  saveSuitChoice(choice);
+  suitTexture = await buildSuitTexture(choice, suitTexture);
+  flyer.setTexture(suitTexture);
+  menu.setSuits(choice);
+}
+
+function applySettings(settings: GameSettings): void {
+  gameSettings = settings;
+  try {
+    localStorage.setItem('wingsuit.settings', JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+  input.mouse.enabled = settings.mouseSteering;
+  rig.mouseSteering = settings.mouseSteering;
+  input.touch.setEnabled(settings.touchControls);
+  audio.setEnabled(settings.audio);
+  menu.setSettings(settings);
+}
+
+// Audio needs a user gesture to start.
+const unlockAudio = () => audio.unlock();
+window.addEventListener('keydown', unlockAudio);
+window.addEventListener('pointerdown', unlockAudio);
 document.getElementById('attribution')!.textContent = ATTRIBUTION;
 
 const exitLocal = origin.toLocal(location.exit.lat, location.exit.lon);
@@ -128,6 +178,8 @@ async function prepare(): Promise<void> {
   }
   menu.setEnvironment(envSettings);
   applyEnvironment(envSettings);
+  applySettings(gameSettings);
+  void applySuit(suitChoice);
   menu.setLoading('Loading terrain…', false);
   terrain.update(exitPos.x, exitPos.z, performance.now());
   await terrain.waitForArea(exitPos.x, exitPos.z, 1);
@@ -152,6 +204,7 @@ function placeAtExit(): void {
   body.reset(exitPos, location.heading, -25, 5);
   canopy.reset();
   flyer.setCanopy(0);
+  input.touch.setCanopyMode(false);
   rig.reset();
   syncModel();
   rig.update(body, 1);
@@ -171,6 +224,7 @@ function startRun(): void {
 
 function finishRun(success: boolean, outcome: string): void {
   run.phase = success ? 'landed' : 'crashed';
+  audio.impact(!success);
   run.outcome = outcome;
   const dist = horizontalDistance(body.position.x, body.position.z, exitPos.x, exitPos.z);
   const lzDist = horizontalDistance(body.position.x, body.position.z, lzPos.x, lzPos.z);
@@ -235,23 +289,31 @@ function groundContact(ground: number): void {
 let accumulator = 0;
 let last = performance.now();
 const _fwd = new THREE.Vector3();
+let gamepadWasConnected: boolean | null = null;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
 
-  if (input.consume('KeyC')) rig.toggle();
-  if (input.consume('KeyR') && run.phase !== 'loading') startRun();
-  if (input.consume('Enter') && (run.phase === 'menu' || run.phase === 'crashed' || run.phase === 'landed')) startRun();
-  const deployRequested = input.consume('Space');
+  const frameInput = input.read(dt);
+  const { controls, actions } = frameInput;
+  if (actions.camera) rig.toggle();
+  if (actions.mute) applySettings({ ...gameSettings, audio: !gameSettings.audio });
+  if (actions.restart && run.phase !== 'loading') startRun();
+  if (actions.start && (run.phase === 'menu' || run.phase === 'crashed' || run.phase === 'landed')) startRun();
+  if (input.gamepad.connected !== gamepadWasConnected) {
+    gamepadWasConnected = input.gamepad.connected;
+    menu.setGamepad(input.gamepad.connected);
+  }
 
   if (run.phase === 'flying') {
-    if (deployRequested) canopy.deploy(body);
-    const controls = input.read(dt);
-    // Under canopy the same keys drive the toggles: A/D = left/right, S = both.
-    const brake = Math.max(0, controls.pitch);
+    if (actions.deploy && canopy.deploy(body)) audio.opening();
+    // Under canopy the same axes drive the toggles: roll = left/right, pitch-up or flare = both.
+    const brake = Math.max(0, controls.pitch, frameInput.flare);
     const toggles = { left: Math.min(1, Math.max(0, -controls.roll) + brake), right: Math.min(1, Math.max(0, controls.roll) + brake) };
+    flyer.setControls(controls.pitch, controls.roll, controls.dive);
+    input.touch.setCanopyMode(canopy.phase !== 'stowed');
     accumulator += dt;
     while (accumulator >= PHYSICS_DT) {
       windField.sample(body.position, run.time, terrain, wind);
@@ -282,8 +344,9 @@ function frame(now: number): void {
   terrain.update(body.position.x, body.position.z, now);
   sky.follow(body.position);
   clouds.update(body.position, wind, dt);
-  rig.update(body, dt, canopy.openness);
+  if (!(window as unknown as { __freezeCamera?: boolean }).__freezeCamera) rig.update(body, dt, canopy.openness, terrain);
   precipitation.update(camera.position, wind, dt, now / 1000);
+  audio.update(dt, body.aero.airspeed, canopy.openness, canopy.brake, envState?.precip === 'rain' ? envState.precipIntensity : 0, run.phase === 'flying');
   // Keep the camera above the terrain.
   const camGround = terrain.getHeight(camera.position.x, camera.position.z);
   if (camGround !== null && camera.position.y < camGround + 1.5) {
@@ -291,6 +354,12 @@ function frame(now: number): void {
     if (rig.mode === 'chase') camera.lookAt(body.position);
   }
   flyer.group.visible = rig.mode !== 'first' || canopy.openness > 0.02;
+  if (rig.mode === 'first') {
+    // Hide the body but keep the canopy visible from the helmet cam.
+    flyer.group.children[0].visible = false;
+  } else {
+    flyer.group.children[0].visible = true;
+  }
 
   if (run.phase !== 'menu' && run.phase !== 'loading') {
     body.forward(_fwd);
@@ -319,7 +388,9 @@ window.addEventListener('resize', () => {
 
 if (import.meta.env.DEV) {
   // Debug handle for scripted tests: window.__wingsuit
-  Object.assign(window, { __wingsuit: { body, canopy, run, terrain, exitPos, lzPos, wind, startRun } });
+  Object.assign(window, {
+    __wingsuit: { body, canopy, run, terrain, exitPos, lzPos, wind, startRun, sky, rig, camera, flyer, renderer, scene, env: () => envState },
+  });
 }
 
 prepare().catch((err) => {
