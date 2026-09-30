@@ -25,9 +25,21 @@ Open http://localhost:5173. `?loc=<id>` selects a launch site (see
 | Roll | A / D |
 | Yaw | Q / E |
 | Dive (collapse wing) | Shift |
+| Deploy parachute | Space |
+| Canopy toggles (left / right) | A / D |
+| Flare (both toggles) | S |
 | Camera (chase / first person) | C |
 | Restart | R |
 | Orbit chase camera | drag with mouse |
+
+## Game modes
+
+- **Distance**: score is the horizontal distance from exit to touchdown in metres.
+- **Target**: score is 1000 at the landing-zone centre, falling to 0 at 500 m.
+
+A crash, a hard landing (sink over 3 m/s or ground speed over 7 m/s), a landing
+on a slope steeper than 30°, or a hard opening above 7 g scores 0. Top ten runs
+per site and mode are kept in the browser's local storage.
 
 ## Scripts
 

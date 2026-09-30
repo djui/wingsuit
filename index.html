@@ -22,9 +22,11 @@
         <div class="row"><span class="label">DIST</span><span id="hud-dist" class="value">0 m</span></div>
         <div class="row"><span class="label">TIME</span><span id="hud-time" class="value">0:00</span></div>
         <div class="row"><span class="label">WIND</span><span id="hud-wind" class="value">—</span></div>
+        <div class="row"><span class="label">CHUTE</span><span id="hud-chute" class="value">STOWED</span></div>
+        <div class="row"><span class="label">TARGET</span><span class="value"><span id="hud-lz-arrow" class="arrow">➤</span> <span id="hud-lz">—</span></span></div>
       </div>
       <div id="hud-status" class="status"></div>
-      <div class="help">W/S pitch · A/D roll · Q/E yaw · Shift dive · C camera · R restart · drag to orbit</div>
+      <div id="hud-help" class="help"></div>
     </div>
 
     <div id="menu">
@@ -32,9 +34,14 @@
         <h1 id="menu-title">Wingsuit</h1>
         <p id="menu-sub"></p>
         <pre id="menu-result"></pre>
+        <div class="modes">
+          <label><input type="radio" name="mode" value="distance" checked /> Distance — glide as far as you can</label>
+          <label><input type="radio" name="mode" value="target" /> Target — land on the bullseye</label>
+        </div>
         <p id="menu-progress"></p>
         <button id="menu-start" disabled>Loading…</button>
-        <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · C camera · R restart</p>
+        <div id="menu-scores" class="scores"></div>
+        <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · under canopy: A/D toggles, S flare · C camera · R restart</p>
       </div>
     </div>
 

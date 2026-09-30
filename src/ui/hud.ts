@@ -1,3 +1,4 @@
+import type { CanopyPhase } from '../sim/canopy';
 import type { FlyerBody } from '../sim/wingsuit';
 
 export interface HudData {
@@ -7,6 +8,10 @@ export interface HudData {
   time: number;
   wind: { fromDeg: number; speed: number };
   terrainPending: number;
+  canopy: CanopyPhase;
+  /** Landing zone distance (m) and bearing relative to the flyer's heading (rad, + = right). */
+  lzDistance: number;
+  lzRelativeBearing: number;
 }
 
 function el(id: string): HTMLElement {
@@ -27,6 +32,10 @@ export class Hud {
   private wind = el('hud-wind');
   private status = el('hud-status');
   private g = el('hud-g');
+  private chute = el('hud-chute');
+  private lz = el('hud-lz');
+  private lzArrow = el('hud-lz-arrow');
+  private help = el('hud-help');
 
   show(visible: boolean): void {
     this.root.classList.toggle('hidden', !visible);
@@ -47,8 +56,17 @@ export class Hud {
     this.time.textContent = `${m}:${s.toString().padStart(2, '0')}`;
     this.wind.textContent = `${d.wind.speed.toFixed(0)} m/s from ${d.wind.fromDeg.toFixed(0)}°`;
     this.g.textContent = `${d.body.aero.gForce.toFixed(1)} g`;
+    this.chute.textContent = d.canopy === 'stowed' ? 'STOWED' : d.canopy === 'deploying' ? 'OPENING' : 'OPEN';
+    this.chute.classList.toggle('accent', d.canopy !== 'stowed');
+    this.lz.textContent = d.lzDistance >= 1000 ? `${(d.lzDistance / 1000).toFixed(2)} km` : `${d.lzDistance.toFixed(0)} m`;
+    this.lzArrow.style.transform = `rotate(${(d.lzRelativeBearing * 180) / Math.PI}deg)`;
     const a = d.body.aero;
-    this.status.textContent = a.stalled ? 'STALL' : d.terrainPending > 0 ? `loading terrain (${d.terrainPending})` : '';
-    this.status.classList.toggle('warn', a.stalled);
+    const stalled = a.stalled && d.canopy === 'stowed';
+    this.status.textContent = stalled ? 'STALL' : d.terrainPending > 0 ? `loading terrain (${d.terrainPending})` : '';
+    this.status.classList.toggle('warn', stalled);
+    this.help.textContent =
+      d.canopy === 'stowed'
+        ? 'W/S pitch · A/D roll · Q/E yaw · Shift dive · Space parachute · C camera · R restart'
+        : 'A/D toggles · S flare (both toggles) · C camera · R restart';
   }
 }

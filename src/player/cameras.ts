@@ -50,7 +50,11 @@ export class CameraRig {
     this.orbitPitch = 0.18;
   }
 
-  update(body: FlyerBody, dt: number): void {
+  /**
+   * @param canopy 0..1 openness; the chase camera backs off so the canopy
+   * does not fill the frame.
+   */
+  update(body: FlyerBody, dt: number, canopy = 0): void {
     const cam = this.camera;
     body.forward(_fwd);
     _up.set(0, 1, 0).applyQuaternion(body.quaternion);
@@ -78,11 +82,11 @@ export class CameraRig {
     const dir = speed > 3 ? _target.copy(body.velocity).normalize() : _target.copy(_fwd);
     _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw);
     dir.applyQuaternion(_q);
-    const dist = 7.5;
+    const dist = 7.5 + 10 * canopy;
     _desired
       .copy(body.position)
       .addScaledVector(dir, -dist * Math.cos(this.orbitPitch))
-      .add(new THREE.Vector3(0, dist * Math.sin(this.orbitPitch) + 1.0, 0));
+      .add(new THREE.Vector3(0, dist * Math.sin(this.orbitPitch) + 1.0 + 3 * canopy, 0));
 
     if (!this.initialised) {
       cam.position.copy(_desired);
@@ -91,7 +95,7 @@ export class CameraRig {
       const k = 1 - Math.exp(-dt * 8);
       cam.position.lerp(_desired, k);
     }
-    _look.copy(body.position).addScaledVector(dir, 6);
+    _look.copy(body.position).addScaledVector(dir, 6).add(new THREE.Vector3(0, 2.5 * canopy, 0));
     cam.up.set(0, 1, 0);
     cam.lookAt(_look);
     cam.fov = 65 + Math.min(15, speed * 0.1);

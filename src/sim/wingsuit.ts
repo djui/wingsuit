@@ -59,6 +59,16 @@ export function airDensity(altitude: number): number {
   return p / (R * T);
 }
 
+export interface StepOptions {
+  /** Scales wingsuit aerodynamic forces and stability (0 = wings collapsed). */
+  aeroScale?: number;
+  /** Additional world-frame force in newtons (e.g. from a canopy). */
+  extraForce?: THREE.Vector3;
+  /** Orientation to blend toward (canopy heading/bank) with the given weight 0..1. */
+  orientation?: THREE.Quaternion;
+  orientationWeight?: number;
+}
+
 export interface AeroState {
   airspeed: number;
   alpha: number;
@@ -103,8 +113,9 @@ export class FlyerBody {
     return target.set(0, 0, -1).applyQuaternion(this.quaternion);
   }
 
-  step(dt: number, controls: Controls, wind: THREE.Vector3): void {
+  step(dt: number, controls: Controls, wind: THREE.Vector3, opts: StepOptions = {}): void {
     const c = this.config;
+    const aeroScale = opts.aeroScale ?? 1;
     // Relative airflow (velocity through the air mass)
     _va.copy(this.velocity).sub(wind);
     const V = _va.length();
@@ -140,7 +151,7 @@ export class FlyerBody {
     const cy = -c.cyBeta * beta;
 
     const rho = airDensity(this.position.y);
-    const q = 0.5 * rho * V * V * c.area * areaFactor;
+    const q = 0.5 * rho * V * V * c.area * areaFactor * aeroScale;
 
     _up.set(0, 1, 0).applyQuaternion(this.quaternion);
     _right.set(1, 0, 0).applyQuaternion(this.quaternion);
@@ -156,6 +167,7 @@ export class FlyerBody {
       _force.addScaledVector(_sideDir, q * cy);
       _force.addScaledVector(vHat, -q * cd);
     }
+    if (opts.extraForce) _force.add(opts.extraForce);
     // Integrate translation (semi-implicit Euler)
     const ax = _force.x / c.mass;
     const ay = _force.y / c.mass;
@@ -166,7 +178,7 @@ export class FlyerBody {
     this.position.addScaledVector(this.velocity, dt);
 
     // Rotation: rate control blended with aerodynamic stability.
-    const airFactor = Math.min(1, (V * V) / (35 * 35));
+    const airFactor = Math.min(1, (V * V) / (35 * 35)) * aeroScale;
     const targetPitch = controls.pitch * c.pitchRate + THREE.MathUtils.clamp((c.alphaTrim - alpha) * 3.0, -2.5, 2.5) * airFactor;
     const targetYaw = -controls.yaw * c.yawRate + THREE.MathUtils.clamp(-beta * 3.0, -2, 2) * airFactor;
     // Positive rotation about body +z lifts the right wing (roll left), so
@@ -181,6 +193,11 @@ export class FlyerBody {
     // Mild roll damping so the flyer does not spin forever without input.
     if (Math.abs(controls.roll) < 0.05) this.rates.z *= Math.exp(-dt * 2.5);
 
+    if (opts.orientation) {
+      // Hanging under a canopy: rates die out and the body follows the canopy.
+      this.rates.multiplyScalar(1 - opts.orientationWeight!);
+      this.quaternion.slerp(opts.orientation, 1 - Math.exp(-dt * 4 * opts.orientationWeight!));
+    }
     _euler.set(this.rates.x * dt, this.rates.y * dt, this.rates.z * dt, 'XYZ');
     _dq.setFromEuler(_euler);
     this.quaternion.multiply(_dq).normalize();

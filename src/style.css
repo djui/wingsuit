@@ -55,3 +55,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; col
   position: fixed; right: 8px; bottom: 6px; font-size: 10px; color: rgba(255,255,255,0.6);
   background: rgba(0,0,0,0.35); padding: 2px 6px; border-radius: 4px; pointer-events: none;
 }
+
+.arrow { display: inline-block; transform-origin: 50% 50%; color: var(--accent); }
+.value.accent { color: var(--accent); }
+.card pre.success { color: #7ee787; }
+.card pre.fail { color: var(--warn); }
+.modes { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: 10px auto; width: fit-content; font-size: 14px; }
+.modes label { cursor: pointer; }
+.scores { margin-top: 14px; font-size: 13px; }
+.scores table { width: 100%; border-collapse: collapse; }
+.scores th, .scores td { padding: 3px 8px; text-align: left; }
+.scores th { color: var(--muted); font-weight: 500; font-size: 11px; letter-spacing: 0.08em; }
+.scores tr.new td { color: var(--accent); font-weight: 700; }
+.muted { color: var(--muted); }
