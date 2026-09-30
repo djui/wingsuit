@@ -9,6 +9,7 @@
   <body>
     <canvas id="view"></canvas>
 
+    <div id="glare"></div>
     <div id="hud" class="hidden">
       <div class="panel left">
         <div class="row"><span class="label">ALT</span><span id="hud-alt" class="value">0 m</span></div>
@@ -60,6 +61,7 @@
             <h1 id="menu-title">Wingsuit</h1>
             <p id="menu-sub"></p>
             <pre id="menu-result"></pre>
+            <canvas id="menu-map" class="hidden" width="360" height="360"></canvas>
             <div class="modes">
               <label><input type="radio" name="mode" value="distance" checked /> Distance — glide as far as you can</label>
               <label><input type="radio" name="mode" value="target" /> Target — land on the bullseye</label>

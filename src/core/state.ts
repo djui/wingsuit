@@ -11,12 +11,14 @@ export interface RunState {
   score: number;
   /** Proximity points accumulated by flying close to the terrain at speed. */
   proximity: number;
-  /** Flight path samples for the results minimap: x, y, z, canopy openness. */
+  /** Flight path samples for the results minimap: t, x, y, z. */
   path: number[];
+  /** Path sample index at deployment, -1 if the canopy was not used. */
+  deployIndex: number;
 }
 
 export function newRunState(mode: GameMode = 'distance'): RunState {
-  return { phase: 'menu', mode, time: 0, maxSpeed: 0, peakG: 0, outcome: '', score: 0, proximity: 0, path: [] };
+  return { phase: 'menu', mode, time: 0, maxSpeed: 0, peakG: 0, outcome: '', score: 0, proximity: 0, path: [], deployIndex: -1 };
 }
 
 /**

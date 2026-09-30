@@ -22,6 +22,8 @@ import { GoogleTiles } from './world/terrain/google3d';
 import { ATTRIBUTION } from './world/terrain/tiles';
 import { fetchLiveWeather, resolveEnvironment, settingsFromLive } from './world/weather';
 import { WindField } from './world/wind';
+import { TreeField } from './world/trees';
+import { drawMinimap } from './ui/minimap';
 
 const PHYSICS_DT = 1 / 120;
 const BODY_CLEARANCE = 0.6;
@@ -43,6 +45,9 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 scene.add(camera);
 
 const sky = new SkyDome(scene);
+const lowEnd = window.matchMedia('(pointer: coarse)').matches;
+sky.enableShadows(renderer, lowEnd ? 1024 : 2048);
+const glare = document.getElementById('glare')!;
 const clouds = new CloudLayer();
 scene.add(clouds.mesh);
 const precipitation = new Precipitation3D();
@@ -52,12 +57,18 @@ const location = LOCATIONS.some((l) => l.id === requestedLoc) ? getLocation(requ
 localStorage.setItem('wingsuit.location', location.id);
 const origin = new GeoOrigin(location.exit);
 const terrain = new TerrainManager(origin, location.loadRadius);
+terrain.shadows = !lowEnd;
 scene.add(terrain.group);
 const google = new GoogleTiles(origin, camera, renderer);
 scene.add(google.group);
+const trees = new TreeField(terrain, !lowEnd);
+scene.add(trees.mesh);
 
 const flyer = createFlyerModel();
 scene.add(flyer.group);
+flyer.group.traverse((o) => {
+  if (o instanceof THREE.Mesh) o.castShadow = true;
+});
 const body = new FlyerBody();
 const canopy = new CanopySystem();
 const rig = new CameraRig(camera, canvas);
@@ -145,13 +156,14 @@ const exitPos = new THREE.Vector3(exitLocal.x, 0, exitLocal.z);
 const lzLocal = origin.toLocal(location.landing.lat, location.landing.lon);
 const lzPos = new THREE.Vector3(lzLocal.x, 0, lzLocal.z);
 const landingZone = createLandingZone(location.landing.radius);
-scene.add(landingZone);
+scene.add(landingZone.group);
 
 function applyEnvironment(settings: EnvironmentSettings): void {
   envSettings = settings;
   saveEnvironmentSettings(settings);
   envState = resolveEnvironment(settings, location.exit.lat, location.exit.lon);
   sky.apply(envState);
+  sky.updateEnvironment(renderer, scene);
   renderer.toneMappingExposure = sky.output.exposure;
   fog.color.copy(sky.output.fogColor);
   fog.density = 2 / envState.visibility;
@@ -216,7 +228,8 @@ async function prepare(): Promise<void> {
   const ridge = terrain.getHeight(exitPos.x, exitPos.z);
   exitPos.y = (location.exit.altitude ?? (ridge ?? 0)) + 0.7;
   lzPos.y = terrain.getHeight(lzPos.x, lzPos.z) ?? 0;
-  landingZone.position.copy(lzPos);
+  landingZone.group.position.copy(lzPos);
+  landingZone.conform(lzPos.x, lzPos.z, (x, z) => terrain.getHeight(x, z));
   applyEnvironment(envSettings); // cloud base depends on the exit altitude
   placeAtExit();
   // The flyer's own feet are the reference for ground contact while standing.
@@ -247,6 +260,7 @@ function standAtExit(): void {
   run.score = 0;
   run.proximity = 0;
   run.path.length = 0;
+  run.deployIndex = -1;
 }
 
 function startRun(): void {
@@ -308,6 +322,14 @@ function finishRun(success: boolean, outcome: string): void {
   );
   menu.showResult(lines.join('\n'), success);
   menu.setScores(loadScores(location.id, run.mode), rank);
+  drawMinimap(menu.map, {
+    terrain,
+    path: run.path,
+    deployIndex: run.deployIndex,
+    exit: { x: exitPos.x, z: exitPos.z },
+    landing: { x: lzPos.x, z: lzPos.z, radius: location.landing.radius },
+  });
+  menu.showMap(true);
 }
 
 function syncModel(): void {
@@ -380,7 +402,10 @@ function frame(now: number): void {
   }
 
   if (run.phase === 'flying') {
-    if (actions.deploy && canopy.deploy(body)) audio.opening();
+    if (actions.deploy && canopy.deploy(body)) {
+      audio.opening();
+      run.deployIndex = run.path.length / 4;
+    }
     if (canopy.phase === 'stowed') {
       if (actions.rollLeft) body.startManeuver('rollLeft');
       if (actions.rollRight) body.startManeuver('rollRight');
@@ -391,6 +416,7 @@ function frame(now: number): void {
     const brake = Math.max(0, controls.pitch, frameInput.flare);
     const toggles = { left: Math.min(1, Math.max(0, -controls.roll) + brake), right: Math.min(1, Math.max(0, controls.roll) + brake) };
     flyer.setControls(controls.pitch, controls.roll, controls.dive);
+    flyer.setCanopyControls(toggles.left, toggles.right);
     input.touch.setCanopyMode(canopy.phase !== 'stowed');
     accumulator += dt;
     while (accumulator >= PHYSICS_DT) {
@@ -419,6 +445,12 @@ function frame(now: number): void {
           break;
         }
       }
+      const tree = trees.hit(body.position.x, body.position.y, body.position.z, 0.5);
+      if (tree) {
+        audio.impact(true);
+        finishRun(false, `Hit a tree at ${(body.velocity.length() * 3.6).toFixed(0)} km/h`);
+        break;
+      }
     }
     run.maxSpeed = Math.max(run.maxSpeed, body.velocity.length());
     // Path sample every ~0.25 s for the results minimap.
@@ -429,6 +461,8 @@ function frame(now: number): void {
 
   syncModel();
   terrain.update(body.position.x, body.position.z, now);
+  trees.enabled = !google.active;
+  trees.update(body.position.x, body.position.z);
   if (google.active) {
     google.update();
     if (!google.calibrated) {
@@ -449,6 +483,8 @@ function frame(now: number): void {
   clouds.update(body.position, wind, dt);
   if (!(window as unknown as { __freezeCamera?: boolean }).__freezeCamera) rig.update(body, dt, canopy.openness, terrain);
   precipitation.update(camera.position, wind, dt, now / 1000);
+  updateGlare();
+  flyer.update(dt, run.phase === 'flying' ? body.aero.airspeed : 0);
   audio.update(dt, body.aero.airspeed, canopy.openness, canopy.brake, envState?.precip === 'rain' ? envState.precipIntensity : 0, run.phase === 'flying');
   // Keep the camera above the terrain.
   const camGround = terrain.getHeight(camera.position.x, camera.position.z);
@@ -483,6 +519,40 @@ function frame(now: number): void {
     });
   }
   renderer.render(scene, camera);
+}
+
+const _camDir = new THREE.Vector3();
+const _sunProbe = new THREE.Vector3();
+let glareLevel = 0;
+
+/** Whiteout when looking straight at the sun, faded if terrain blocks it. */
+function updateGlare(): void {
+  camera.getWorldDirection(_camDir);
+  const cos = _camDir.dot(sky.sunDir);
+  const angle = Math.acos(THREE.MathUtils.clamp(cos, -1, 1));
+  let target = 0;
+  if (cos > 0 && sky.output.sunIntensity > 0.05) {
+    const inner = THREE.MathUtils.degToRad(3);
+    const outer = THREE.MathUtils.degToRad(16);
+    let f = 1 - THREE.MathUtils.smoothstep(angle, inner, outer);
+    // Occlusion: march toward the sun and stop if the terrain rises above the ray.
+    if (f > 0.001) {
+      let blocked = false;
+      for (let d = 60; d < 12000 && !blocked; d += d < 600 ? 40 : 150) {
+        _sunProbe.copy(camera.position).addScaledVector(sky.sunDir, d);
+        const h = terrain.getHeight(_sunProbe.x, _sunProbe.z);
+        if (h !== null && _sunProbe.y < h) blocked = true;
+      }
+      if (blocked) f = 0;
+    }
+    target = f * f * 0.92 * sky.output.sunIntensity;
+    // Screen position of the sun for the gradient centre.
+    _sunProbe.copy(camera.position).addScaledVector(sky.sunDir, 1000).project(camera);
+    glare.style.setProperty('--gx', `${((_sunProbe.x + 1) / 2) * 100}%`);
+    glare.style.setProperty('--gy', `${((1 - _sunProbe.y) / 2) * 100}%`);
+  }
+  glareLevel += (target - glareLevel) * 0.15;
+  glare.style.opacity = glareLevel.toFixed(3);
 }
 
 window.addEventListener('resize', () => {

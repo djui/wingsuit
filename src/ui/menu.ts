@@ -37,6 +37,7 @@ export class Menu {
   private progress = el('menu-progress');
   private button = el<HTMLButtonElement>('menu-start');
   private result = el('menu-result');
+  readonly map = el<HTMLCanvasElement>('menu-map');
   private scores = el('menu-scores');
   private locationList = el('menu-locations');
   private modeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="mode"]'));
@@ -193,7 +194,12 @@ export class Menu {
     this.title.textContent = loc.name;
     this.sub.textContent = `${loc.country} · ${loc.blurb}`;
     this.result.textContent = '';
+    this.map.classList.add('hidden');
     this.root.classList.remove('hidden');
+  }
+
+  showMap(visible: boolean): void {
+    this.map.classList.toggle('hidden', !visible);
   }
 
   setLoading(text: string, ready: boolean): void {

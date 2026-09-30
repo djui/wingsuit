@@ -45,7 +45,10 @@ wobbles, and rises where it blows up a slope.
 | Roll | A / D |
 | Yaw | Q / E |
 | Dive (collapse wing) | Shift |
-| Deploy parachute | Space |
+| Jump off the edge / deploy parachute | Space |
+| Barrel roll left / right | Z / X |
+| Loop / front flip | F / G |
+| Zoom chase camera | mouse wheel, + / − |
 | Canopy toggles (left / right) | A / D |
 | Flare (both toggles) | S |
 | Camera (chase / first person / cinematic) | C |
@@ -69,10 +72,18 @@ procedural flyer. Sound is procedural (wind, canopy flutter, rain, impacts).
 
 - **Distance**: score is the horizontal distance from exit to touchdown in metres.
 - **Target**: score is 1000 at the landing-zone centre, falling to 0 at 500 m.
+- **Proximity**: points accumulate while flying within 60 m of the ground at
+  wingsuit speed (full rate below 10 m). Hitting a tree ends the run.
 
 A crash, a hard landing (sink over 3 m/s or ground speed over 7 m/s), a landing
 on a slope steeper than 30°, or a hard opening above 7 g scores 0. Top ten runs
 per site and mode are kept in the browser's local storage.
+
+Runs start standing on the exit. At cliff sites the elevation data is carved
+into a vertical wall in front of the edge (the real face, which 13 m pixels
+smooth away), and steep faces are tinted toward rock. Conifers are placed on
+forested satellite pixels near the flyer. The results screen shows a
+hill-shaded minimap with the flown path.
 
 ## Google Photorealistic 3D Tiles (optional)
 

@@ -24,6 +24,8 @@ interface Chunk {
   imageryZoom: number;
   imageryTarget: number;
   imageryAbort: AbortController | null;
+  /** 64x64 downsample of the imagery for land-cover lookups (RGBA). */
+  imageSample: Uint8ClampedArray | null;
   building: boolean;
   disposed: boolean;
   ready: Promise<void>;
@@ -59,6 +61,8 @@ export class TerrainManager {
   private lastCenter = { tx: NaN, ty: NaN };
   private lastUpdate = 0;
   private cliff: CliffCarve | null = null;
+  /** Whether terrain chunks cast shadows (costly on low-end devices). */
+  shadows = true;
   private carved = new Set<string>();
 
   constructor(
@@ -159,6 +163,18 @@ export class TerrainManager {
     const h11 = this.sample(tx, ty, i0 + 1, j0 + 1);
     if (h00 === null || h10 === null || h01 === null || h11 === null) return null;
     return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
+  }
+
+  /** Imagery colour at scene x/z as [r, g, b] 0..255, or null if not loaded. */
+  sampleImagery(x: number, z: number): [number, number, number] | null {
+    const { fx, fy } = this.sceneToTile(x, z);
+    const chunk = this.chunks.get(tileKey(ELEVATION_ZOOM, Math.floor(fx), Math.floor(fy)));
+    if (!chunk?.imageSample) return null;
+    const px = Math.min(63, Math.floor((fx - Math.floor(fx)) * 64));
+    const py = Math.min(63, Math.floor((fy - Math.floor(fy)) * 64));
+    const i = (py * 64 + px) * 4;
+    const d = chunk.imageSample;
+    return [d[i], d[i + 1], d[i + 2]];
   }
 
   /** Surface normal (approximate, from finite differences). */
@@ -269,6 +285,7 @@ export class TerrainManager {
       imageryZoom: 0,
       imageryTarget: 0,
       imageryAbort: null,
+      imageSample: null,
       building: true,
       disposed: false,
       ready: Promise.resolve(),
@@ -292,10 +309,12 @@ export class TerrainManager {
       for (const t of tiles) if (t) this.tiles.set(tileKey(t.z, t.x, t.y), t);
       for (const t of tiles) if (t) this.carveTile(t);
 
-      const material = new THREE.MeshLambertMaterial({ color: 0x808080 });
+      const material = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.95, metalness: 0, envMapIntensity: 0.35, vertexColors: true });
       const mesh = new THREE.Mesh(this.buildGeometry(tx, ty, chunk.step), material);
       mesh.name = chunk.key;
       mesh.frustumCulled = true;
+      mesh.receiveShadow = true;
+      mesh.castShadow = this.shadows;
       chunk.mesh = mesh;
       chunk.building = false;
       this.group.add(mesh);
@@ -322,12 +341,17 @@ export class TerrainManager {
     loadImageryForTile(chunk.tx, chunk.ty, zoom, abort.signal)
       .then((canvas) => {
         if (abort.signal.aborted || chunk.disposed || !chunk.mesh) return;
+        const small = document.createElement('canvas');
+        small.width = small.height = 64;
+        const sctx = small.getContext('2d', { willReadFrequently: true })!;
+        sctx.drawImage(canvas, 0, 0, 64, 64);
+        chunk.imageSample = sctx.getImageData(0, 0, 64, 64).data;
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 8;
         tex.generateMipmaps = true;
         tex.minFilter = THREE.LinearMipmapLinearFilter;
-        const mat = chunk.mesh.material as THREE.MeshLambertMaterial;
+        const mat = chunk.mesh.material as THREE.MeshStandardMaterial;
         mat.map?.dispose();
         mat.map = tex;
         mat.color.set(0xffffff);
@@ -344,6 +368,7 @@ export class TerrainManager {
     const positions = new Float32Array((verts + skirtVerts) * 3);
     const normals = new Float32Array((verts + skirtVerts) * 3);
     const uvs = new Float32Array((verts + skirtVerts) * 2);
+    const colors = new Float32Array((verts + skirtVerts) * 3);
 
     // Grid vertices
     const heightAt = (i: number, j: number) => this.sampleClamped(tx, ty, i * step, j * step);
@@ -383,6 +408,13 @@ export class TerrainManager {
         normals[k] = -dx / len;
         normals[k + 1] = 1 / len;
         normals[k + 2] = -dz / len;
+        // Steep faces: the draped imagery stretches into streaks, so fade
+        // them toward a grey rock tone (slopes above ~55° are fully rock).
+        const ny = 1 / len;
+        const rock = THREE.MathUtils.smoothstep(0.66 - ny, 0, 0.2);
+        colors[k] = 1 - rock * 0.45;
+        colors[k + 1] = 1 - rock * 0.47;
+        colors[k + 2] = 1 - rock * 0.42;
       }
     }
     // Skirt vertices: copies of the border, dropped down.
@@ -404,6 +436,9 @@ export class TerrainManager {
       normals[dst * 3 + 2] = normals[src * 3 + 2];
       uvs[dst * 2] = uvs[src * 2];
       uvs[dst * 2 + 1] = uvs[src * 2 + 1];
+      colors[dst * 3] = colors[src * 3];
+      colors[dst * 3 + 1] = colors[src * 3 + 1];
+      colors[dst * 3 + 2] = colors[src * 3 + 2];
     }
 
     // Indices
@@ -444,6 +479,7 @@ export class TerrainManager {
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeBoundingSphere();
     return geo;
@@ -455,7 +491,7 @@ export class TerrainManager {
     if (chunk.mesh) {
       this.group.remove(chunk.mesh);
       chunk.mesh.geometry.dispose();
-      const mat = chunk.mesh.material as THREE.MeshLambertMaterial;
+      const mat = chunk.mesh.material as THREE.MeshStandardMaterial;
       mat.map?.dispose();
       mat.dispose();
     }

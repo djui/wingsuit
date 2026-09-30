@@ -1,48 +1,85 @@
 import * as THREE from 'three';
 
-/** Landing target: bullseye rings, centre pole with flag, faint 500 m scoring ring. */
-export function createLandingZone(radius: number): THREE.Group {
-  const g = new THREE.Group();
-  g.name = 'landing-zone';
+export interface LandingZoneMarker {
+  group: THREE.Group;
+  /** Rebuilds the rings draped over the terrain around the centre. */
+  conform(cx: number, cz: number, heightAt: (x: number, z: number) => number | null): void;
+}
 
-  const ring = (inner: number, outer: number, color: number, opacity: number) => {
-    const m = new THREE.Mesh(
-      new THREE.RingGeometry(inner, outer, 64),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    m.rotation.x = -Math.PI / 2;
-    return m;
-  };
-  g.add(ring(0, radius * 0.25, 0xff3b30, 0.85));
-  g.add(ring(radius * 0.25, radius * 0.5, 0xffffff, 0.75));
-  g.add(ring(radius * 0.5, radius * 0.75, 0xff3b30, 0.75));
-  g.add(ring(radius * 0.75, radius, 0xffffff, 0.65));
-  g.add(ring(500 - 4, 500, 0xffb454, 0.35));
+/** Landing target: bullseye rings and a 500 m scoring ring draped on the terrain, pole with flag, beacon. */
+export function createLandingZone(radius: number): LandingZoneMarker {
+  const group = new THREE.Group();
+  group.name = 'landing-zone';
+  const rings = new THREE.Group();
+  group.add(rings);
 
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3, 0.3, 14, 8),
-    new THREE.MeshStandardMaterial({ color: 0xeeeeee }),
-  );
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 14, 8), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
   pole.position.y = 7;
-  g.add(pole);
-  const flag = new THREE.Mesh(
-    new THREE.PlaneGeometry(4, 2.5),
-    new THREE.MeshBasicMaterial({ color: 0xffb454, side: THREE.DoubleSide }),
-  );
+  pole.castShadow = true;
+  group.add(pole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.5), new THREE.MeshBasicMaterial({ color: 0xffb454, side: THREE.DoubleSide }));
   flag.position.set(2, 12.5, 0);
-  g.add(flag);
-
-  // Tall beacon so the target is visible from kilometres away.
+  group.add(flag);
   const beacon = new THREE.Mesh(
     new THREE.CylinderGeometry(1.5, 1.5, 400, 8, 1, true),
     new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 0.25, depthWrite: false }),
   );
   beacon.position.y = 200;
-  g.add(beacon);
+  group.add(beacon);
 
-  // Lift the rings a little to avoid z-fighting with the terrain.
-  g.children.forEach((c) => {
-    if (c instanceof THREE.Mesh && c.geometry instanceof THREE.RingGeometry) c.position.y = 0.8;
-  });
-  return g;
+  const bands: Array<{ inner: number; outer: number; color: number; opacity: number }> = [
+    { inner: 0, outer: radius * 0.25, color: 0xff3b30, opacity: 0.85 },
+    { inner: radius * 0.25, outer: radius * 0.5, color: 0xffffff, opacity: 0.75 },
+    { inner: radius * 0.5, outer: radius * 0.75, color: 0xff3b30, opacity: 0.75 },
+    { inner: radius * 0.75, outer: radius, color: 0xffffff, opacity: 0.65 },
+    { inner: 496, outer: 500, color: 0xffb454, opacity: 0.4 },
+  ];
+
+  const conform = (cx: number, cz: number, heightAt: (x: number, z: number) => number | null) => {
+    rings.clear();
+    const centreH = heightAt(cx, cz) ?? 0;
+    for (const band of bands) {
+      const angular = band.outer > 100 ? 128 : 64;
+      const radial = band.outer > 100 ? 1 : 3;
+      const positions: number[] = [];
+      const indices: number[] = [];
+      for (let r = 0; r <= radial; r++) {
+        const rad = band.inner + ((band.outer - band.inner) * r) / radial;
+        for (let a = 0; a <= angular; a++) {
+          const ang = (a / angular) * Math.PI * 2;
+          const x = cx + Math.cos(ang) * rad;
+          const z = cz + Math.sin(ang) * rad;
+          const h = heightAt(x, z) ?? centreH;
+          positions.push(x - cx, h - centreH + 0.6, z - cz);
+        }
+      }
+      const row = angular + 1;
+      for (let r = 0; r < radial; r++) {
+        for (let a = 0; a < angular; a++) {
+          const i0 = r * row + a;
+          indices.push(i0, i0 + 1, i0 + row, i0 + 1, i0 + row + 1, i0 + row);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({
+          color: band.color,
+          transparent: true,
+          opacity: band.opacity,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      );
+      rings.add(mesh);
+    }
+  };
+
+  return { group, conform };
 }

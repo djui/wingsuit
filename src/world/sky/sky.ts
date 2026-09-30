@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 import type { EnvironmentState } from '../environment';
 
 const _dir = new THREE.Vector3();
@@ -31,6 +32,14 @@ export class SkyDome {
   readonly hemi = new THREE.HemisphereLight(0xbfd4ff, 0x4a4030, 0.6);
   readonly stars: THREE.Points;
   readonly moonDisc: THREE.Mesh;
+  readonly flare: Lensflare;
+  private readonly flareElements: LensflareElement[] = [];
+  private readonly envSky = new Sky();
+  private readonly envScene = new THREE.Scene();
+  private pmrem: THREE.PMREMGenerator | null = null;
+  private envTarget: THREE.WebGLRenderTarget | null = null;
+  /** Sun direction shadow frustum half-size in metres. */
+  shadowRadius = 260;
   readonly sunDir = new THREE.Vector3(0, 1, 0);
   readonly moonDir = new THREE.Vector3(0, 1, 0);
   readonly output: SkyOutput = {
@@ -72,6 +81,73 @@ export class SkyDome {
       new THREE.MeshBasicMaterial({ color: 0xf4f1e6, fog: false, transparent: true, opacity: 0 }),
     );
     scene.add(this.moonDisc);
+
+    // Lens flare on the sun: a soft core plus a few ghosts down the axis.
+    this.flare = new Lensflare();
+    const core = flareTexture(256, [
+      [0, 'rgba(255,250,235,1)'],
+      [0.12, 'rgba(255,240,200,0.9)'],
+      [0.35, 'rgba(255,200,120,0.25)'],
+      [1, 'rgba(255,180,80,0)'],
+    ]);
+    const ghost = flareTexture(128, [
+      [0, 'rgba(255,255,255,0)'],
+      [0.7, 'rgba(255,255,255,0.05)'],
+      [0.85, 'rgba(255,255,255,0.35)'],
+      [1, 'rgba(255,255,255,0)'],
+    ]);
+    const specs: Array<[THREE.Texture, number, number, number]> = [
+      [core, 700, 0, 0xffffff],
+      [ghost, 60, 0.35, 0xffd0a0],
+      [ghost, 120, 0.55, 0xa0d0ff],
+      [ghost, 40, 0.75, 0xffe0c0],
+      [ghost, 180, 1.0, 0xffffff],
+    ];
+    for (const [tex, size, distance, color] of specs) {
+      const el = new LensflareElement(tex, size, distance, new THREE.Color(color));
+      this.flareElements.push(el);
+      this.flare.addElement(el);
+    }
+    this.sun.add(this.flare);
+
+    // A second sky, rendered alone into a PMREM for image-based lighting.
+    this.envSky.scale.setScalar(450000);
+    this.envScene.add(this.envSky);
+  }
+
+  /** Turn on sun shadows; call once after creating the renderer. */
+  enableShadows(renderer: THREE.WebGLRenderer, mapSize = 2048): void {
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(mapSize, mapSize);
+    const cam = this.sun.shadow.camera;
+    cam.left = -this.shadowRadius;
+    cam.right = this.shadowRadius;
+    cam.top = this.shadowRadius;
+    cam.bottom = -this.shadowRadius;
+    // Depth slab around the player only: the light sits 600 m up-sun, and
+    // terrain closer to the light than ~300 m from the player must not be
+    // treated as a caster or hillsides swallow every shadow.
+    cam.near = 300;
+    cam.far = 1000;
+    this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.normalBias = 0.05;
+    this.sun.shadow.radius = 2;
+    cam.updateProjectionMatrix();
+  }
+
+  /** Re-renders the sky into an environment map for PBR materials. */
+  updateEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
+    if (!this.pmrem) this.pmrem = new THREE.PMREMGenerator(renderer);
+    const src = this.sky.material.uniforms;
+    const dst = this.envSky.material.uniforms;
+    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) dst[k].value = src[k].value;
+    dst.sunPosition.value.copy(src.sunPosition.value);
+    this.envTarget?.dispose();
+    this.envTarget = this.pmrem.fromScene(this.envScene, 0, 100, 400000);
+    scene.environment = this.envTarget.texture;
+    scene.environmentIntensity = 0.25 + 0.75 * this.output.daylight;
   }
 
   apply(env: EnvironmentState): void {
@@ -115,11 +191,19 @@ export class SkyDome {
     this.output.daylight = daylight;
     this.output.sunColor.copy(sunColor);
     this.output.sunIntensity = sunUp * cloudDim;
+    // Flare strength: sun up, not behind heavy cloud.
+    const flareStrength = sunUp * (1 - 0.9 * cloud);
+    this.flareElements.forEach((el, i) => {
+      el.size = (i === 0 ? 700 : el.size) * 1;
+      el.color.copy(sunColor).multiplyScalar(i === 0 ? flareStrength : flareStrength * 0.8);
+    });
+    this.flare.visible = flareStrength > 0.02;
   }
 
   /** Keep lights and sky bodies centred on the player. */
   follow(p: THREE.Vector3): void {
-    this.sun.position.copy(p).addScaledVector(this.sunDir, 10000);
+    // The sun light sits 600 m up-sun of the player; the shadow depth range covers ±1 km around them.
+    this.sun.position.copy(p).addScaledVector(this.sunDir, 600);
     this.sun.target.position.copy(p);
     this.sun.target.updateMatrixWorld();
     this.moon.position.copy(p).addScaledVector(this.moonDir, 10000);
@@ -129,4 +213,17 @@ export class SkyDome {
     this.moonDisc.position.copy(p).addScaledVector(this.moonDir, 90000);
     _dir.copy(p);
   }
+}
+
+function flareTexture(size: number, stops: Array<[number, string]>): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  for (const [o, col] of stops) g.addColorStop(o, col);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
