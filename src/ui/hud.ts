@@ -67,7 +67,9 @@ export class Hud {
     const a = d.body.aero;
     const stalled = a.stalled && d.canopy === 'stowed' && !d.ready;
     this.status.textContent = d.ready
-      ? 'ON THE EDGE — Space to jump'
+      ? window.matchMedia('(pointer: coarse)').matches
+        ? 'ON THE EDGE — tap JUMP'
+        : 'ON THE EDGE — Space to jump'
       : stalled
         ? 'STALL'
         : d.terrainPending > 0

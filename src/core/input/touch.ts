@@ -77,6 +77,12 @@ export class TouchInput implements InputSource {
     this.root.classList.toggle('canopy', on);
   }
 
+  /** On the edge the big button reads JUMP instead of CHUTE. */
+  setReady(ready: boolean): void {
+    const big = this.root.querySelector<HTMLElement>('[data-action="deploy"]');
+    if (big) big.textContent = ready ? 'JUMP' : 'CHUTE';
+  }
+
   read(): RawInput {
     if (!this.enabled) return { pitch: 0, roll: 0, yaw: 0, dive: 0, flare: 0, zoom: 0 };
     return {

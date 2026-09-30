@@ -16,14 +16,14 @@
         <div class="row"><span class="label">AGL</span><span id="hud-agl" class="value">0 m</span></div>
         <div class="row"><span class="label">SPD</span><span id="hud-speed" class="value">0 km/h</span></div>
         <div class="row"><span class="label">V/S</span><span id="hud-vs" class="value">0 m/s</span></div>
-        <div class="row"><span class="label">L/D</span><span id="hud-glide" class="value">—</span></div>
-        <div class="row"><span class="label">G</span><span id="hud-g" class="value">1.0 g</span></div>
+        <div class="row optional"><span class="label">L/D</span><span id="hud-glide" class="value">—</span></div>
+        <div class="row optional"><span class="label">G</span><span id="hud-g" class="value">1.0 g</span></div>
         <div class="row"><span class="label">PROX</span><span id="hud-prox" class="value">0</span></div>
       </div>
       <div class="panel right">
         <div class="row"><span class="label">DIST</span><span id="hud-dist" class="value">0 m</span></div>
-        <div class="row"><span class="label">TIME</span><span id="hud-time" class="value">0:00</span></div>
-        <div class="row"><span class="label">WIND</span><span id="hud-wind" class="value">—</span></div>
+        <div class="row optional"><span class="label">TIME</span><span id="hud-time" class="value">0:00</span></div>
+        <div class="row optional"><span class="label">WIND</span><span id="hud-wind" class="value">—</span></div>
         <div class="row"><span class="label">CHUTE</span><span id="hud-chute" class="value">STOWED</span></div>
         <div class="row"><span class="label">TARGET</span><span class="value"><span id="hud-lz-arrow" class="arrow">➤</span> <span id="hud-lz">—</span></span></div>
       </div>
@@ -54,8 +54,10 @@
       <div class="card wide">
         <div class="columns">
           <aside class="col locations">
-            <h2>Launch site</h2>
-            <div id="menu-locations"></div>
+            <details open>
+              <summary><h2>Launch site</h2></summary>
+              <div id="menu-locations"></div>
+            </details>
           </aside>
           <section class="col main">
             <h1 id="menu-title">Wingsuit</h1>
@@ -70,13 +72,16 @@
             <p id="menu-progress"></p>
             <button id="menu-start" disabled>Loading…</button>
             <div id="menu-scores" class="scores"></div>
-            <h2>Wingsuit</h2>
-            <div id="menu-suits" class="suits"></div>
-            <label class="upload">Custom image <input id="suit-upload" type="file" accept="image/*" /></label>
+            <details class="suit-details" open>
+              <summary><h2>Wingsuit</h2></summary>
+              <div id="menu-suits" class="suits"></div>
+              <label class="upload">Custom image <input id="suit-upload" type="file" accept="image/*" /></label>
+            </details>
             <p class="controls">Space jump / parachute · W/S pitch · A/D roll · Q/E yaw · Shift dive · Z/X barrel roll · F loop · G front flip · under canopy: A/D toggles, S flare · C camera · wheel or +/− zoom · R restart · M mute</p>
           </section>
           <aside class="col env">
-            <h2>Conditions</h2>
+            <details open>
+            <summary><h2>Conditions</h2></summary>
             <label>Time
               <select id="env-time">
                 <option value="dawn">Dawn</option>
@@ -114,7 +119,9 @@
             </label>
             <button id="env-live" type="button" class="secondary">Use live weather</button>
             <p id="env-live-status" class="muted small"></p>
-            <h2>Settings</h2>
+            </details>
+            <details>
+            <summary><h2>Settings</h2></summary>
             <label class="check"><input id="set-mouse" type="checkbox" /> Mouse steering (left button dives / flares, middle deploys, right-drag looks)</label>
             <label class="check"><input id="set-touch" type="checkbox" /> Touch controls</label>
             <label class="check"><input id="set-audio" type="checkbox" checked /> Sound</label>
@@ -124,6 +131,7 @@
             </label>
             <p id="set-google-status" class="muted small">Needs your own key with the Map Tiles API enabled. Usage is billed to your Google account.</p>
             <p id="set-gamepad" class="muted small">No gamepad detected</p>
+            </details>
           </aside>
         </div>
       </div>

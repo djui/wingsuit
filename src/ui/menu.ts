@@ -196,6 +196,7 @@ export class Menu {
     this.result.textContent = '';
     this.map.classList.add('hidden');
     this.root.classList.remove('hidden');
+    document.body.classList.add('menu-open');
   }
 
   showMap(visible: boolean): void {
@@ -213,6 +214,8 @@ export class Menu {
     this.result.classList.toggle('success', success);
     this.result.classList.toggle('fail', !success);
     this.root.classList.remove('hidden');
+    document.body.classList.add('menu-open');
+    this.root.querySelector('.card')?.scrollTo({ top: 0 });
     this.button.textContent = 'Jump again  (Enter)';
     this.button.disabled = false;
   }
@@ -233,6 +236,7 @@ export class Menu {
 
   hide(): void {
     this.root.classList.add('hidden');
+    document.body.classList.remove('menu-open');
     // Otherwise Space/Enter would re-trigger the focused button mid-flight.
     this.button.blur();
   }

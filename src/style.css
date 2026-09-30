@@ -15,12 +15,18 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; col
 
 #hud { position: fixed; inset: 0; pointer-events: none; }
 .panel {
-  position: absolute; top: 16px; padding: 10px 14px; background: var(--panel);
+  position: absolute; top: max(16px, env(safe-area-inset-top)); padding: 10px 14px; background: var(--panel);
   border-radius: 10px; backdrop-filter: blur(6px); min-width: 170px;
   font-variant-numeric: tabular-nums;
 }
-.panel.left { left: 16px; }
-.panel.right { right: 16px; }
+.panel.left { left: max(16px, env(safe-area-inset-left)); }
+.panel.right { right: max(16px, env(safe-area-inset-right)); }
+body.menu-open #touch { display: none !important; }
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary h2 { display: inline-block; }
+details:not([open]) > summary h2::after { content: ' ▸'; }
+details[open] > summary h2::after { content: ' ▾'; }
 .row { display: flex; justify-content: space-between; gap: 16px; line-height: 1.6; }
 .label { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; }
 .value { font-weight: 600; font-size: 15px; }
@@ -122,14 +128,57 @@ button.secondary:disabled { opacity: 0.5; }
 #touch.canopy .tb.canopy-only { display: block; }
 #touch.canopy .tb.fly, #touch.canopy .tb.big { display: none; }
 
-@media (max-width: 700px) {
-  .panel { min-width: 120px; padding: 6px 10px; }
-  .row { line-height: 1.35; gap: 8px; }
-  .label { font-size: 10px; }
-  .value { font-size: 12px; }
+/* Compact mode: phones in either orientation, or any short viewport. */
+@media (max-width: 760px), (max-height: 520px) {
+  .panel { min-width: 0; padding: 5px 8px; border-radius: 8px; top: max(8px, env(safe-area-inset-top)); }
+  .panel.left { left: max(8px, env(safe-area-inset-left)); }
+  .panel.right { right: max(8px, env(safe-area-inset-right)); }
+  .row { line-height: 1.25; gap: 8px; }
+  .label { font-size: 9px; letter-spacing: 0.06em; }
+  .value { font-size: 11px; }
+  .status { top: calc(max(8px, env(safe-area-inset-top)) + 112px); font-size: 12px; max-width: 70vw; text-align: center; background: var(--panel); padding: 4px 10px; border-radius: 8px; }
+  .status.warn { font-size: 16px; }
   .help { display: none; }
-  #attribution { font-size: 8px; }
-  .card.wide { padding: 14px; }
-  .card h1 { font-size: 22px; }
+  #attribution { font-size: 7px; right: auto; left: 4px; bottom: max(2px, env(safe-area-inset-bottom)); max-width: 45vw; text-align: left; }
+  .card.wide { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); border-radius: 12px; max-height: 96vh; }
+  .card h1 { font-size: 20px; margin: 0; }
+  .card p { font-size: 13px; margin: 4px 0; }
+  .card pre { font-size: 13px; margin: 8px 0; }
+  #menu-map { width: min(300px, 100%); height: auto; }
+  #menu-start { padding: 10px 22px; font-size: 16px; margin-top: 8px; }
+  .modes { font-size: 13px; gap: 4px; margin: 8px auto; }
+  .scores { font-size: 12px; }
+  .controls { display: none; }
+  /* Phone menu: the run card first, then sites as a scroll strip, then conditions. */
+  .columns { display: flex; flex-direction: column; gap: 10px; }
+  .col.main { order: 0; }
+  .col.locations { order: 1; }
+  .col.env { order: 2; }
+  .col h2 { margin: 6px 0; }
+  #menu-locations { display: flex; flex-direction: row; gap: 6px; max-height: none; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .loc { flex: 0 0 auto; min-width: 150px; padding: 6px 10px; }
+  .loc-name { font-size: 13px; }
+  .loc-meta { font-size: 10px; }
+  .suits { gap: 5px; }
+  .suit { width: 36px; height: 36px; border-radius: 6px; }
+  .col.env label { margin-bottom: 8px; font-size: 12px; }
+  .col.env label.check { font-size: 11px; }
+  /* Touch controls: smaller buttons, safe-area aware. */
+  .touch-buttons { right: max(8px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: repeat(3, 62px); gap: 6px; }
+  .tb { height: 42px; font-size: 10px; border-radius: 10px; letter-spacing: 0.04em; }
+  .tb.big { grid-column: span 3; height: 50px; font-size: 13px; }
+  .tb.small { height: 42px; font-size: 10px; }
+  #touch-stick { width: 100px; height: 100px; margin: -50px 0 0 -50px; }
+  #touch-knob { left: 30px; top: 30px; width: 40px; height: 40px; }
+  #touch-zone { width: 50%; }
+}
+@media (max-height: 520px) {
+  /* Landscape phone: HUD rows trimmed so the button grid fits underneath. */
+  .row.optional { display: none; }
+  .panel { padding: 4px 8px; }
+  .row { line-height: 1.2; }
+  .touch-buttons { grid-template-columns: repeat(4, 58px); }
+  .tb.big { grid-column: span 4; height: 44px; }
+  .tb, .tb.small { height: 38px; }
 }
 .col.env input[type=password] { width: 100%; padding: 5px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid rgba(255,255,255,0.15); font: inherit; font-size: 12px; }

@@ -32,7 +32,7 @@ const LANDING = { safeSink: 3.0, safeGround: 7.0, perfectSink: 1.5, perfectGroun
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.matchMedia('(pointer: coarse)').matches ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.55;
@@ -261,6 +261,7 @@ function standAtExit(): void {
   run.proximity = 0;
   run.path.length = 0;
   run.deployIndex = -1;
+  input.touch.setReady(true);
 }
 
 function startRun(): void {
@@ -274,6 +275,7 @@ function startRun(): void {
 function jump(): void {
   if (run.phase !== 'ready') return;
   run.phase = 'flying';
+  input.touch.setReady(false);
   flyer.setStanding(0);
   body.reset(exitPos, location.heading, -12, 3.5);
   body.velocity.y += 1.2;
