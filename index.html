@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Wingsuit</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="panel left">
+        <div class="row"><span class="label">ALT</span><span id="hud-alt" class="value">0 m</span></div>
+        <div class="row"><span class="label">AGL</span><span id="hud-agl" class="value">0 m</span></div>
+        <div class="row"><span class="label">SPD</span><span id="hud-speed" class="value">0 km/h</span></div>
+        <div class="row"><span class="label">V/S</span><span id="hud-vs" class="value">0 m/s</span></div>
+        <div class="row"><span class="label">L/D</span><span id="hud-glide" class="value">—</span></div>
+        <div class="row"><span class="label">G</span><span id="hud-g" class="value">1.0 g</span></div>
+      </div>
+      <div class="panel right">
+        <div class="row"><span class="label">DIST</span><span id="hud-dist" class="value">0 m</span></div>
+        <div class="row"><span class="label">TIME</span><span id="hud-time" class="value">0:00</span></div>
+        <div class="row"><span class="label">WIND</span><span id="hud-wind" class="value">—</span></div>
+      </div>
+      <div id="hud-status" class="status"></div>
+      <div class="help">W/S pitch · A/D roll · Q/E yaw · Shift dive · C camera · R restart · drag to orbit</div>
+    </div>
+
+    <div id="menu">
+      <div class="card">
+        <h1 id="menu-title">Wingsuit</h1>
+        <p id="menu-sub"></p>
+        <pre id="menu-result"></pre>
+        <p id="menu-progress"></p>
+        <button id="menu-start" disabled>Loading…</button>
+        <p class="controls">W/S pitch · A/D roll · Q/E yaw · Shift dive · C camera · R restart</p>
+      </div>
+    </div>
+
+    <div id="attribution"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
