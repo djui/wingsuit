@@ -116,6 +116,12 @@ default wind, recommended terrain radius to load.
 - Leaderboard per location × mode in localStorage. Results screen shows
   flight path on the minimap, max speed, best glide ratio, flight time.
 
+## Status
+
+All five phases are implemented (see git history). Sugarloaf was replaced by
+Corcovado, and Mount Fuji / Victoria Peak are helicopter drops, because the
+elevation data shows no flyable cliff there.
+
 ## Phases
 
 1. **Core flight** — scaffold, git init, one location (Eiger) with streamed terrain,

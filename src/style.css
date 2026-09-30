@@ -130,3 +130,4 @@ button.secondary:disabled { opacity: 0.5; }
   .card.wide { padding: 14px; }
   .card h1 { font-size: 22px; }
 }
+.col.env input[type=password] { width: 100%; padding: 5px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid rgba(255,255,255,0.15); font: inherit; font-size: 12px; }

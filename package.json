@@ -11,6 +11,7 @@
     "probe": "node scripts/probe-terrain.mjs"
   },
   "dependencies": {
+    "3d-tiles-renderer": "^0.5.3",
     "suncalc": "^2.0.2",
     "three": "^0.186.1"
   },

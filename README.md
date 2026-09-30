@@ -74,6 +74,24 @@ A crash, a hard landing (sink over 3 m/s or ground speed over 7 m/s), a landing
 on a slope steeper than 30°, or a hard opening above 7 g scores 0. Top ten runs
 per site and mode are kept in the browser's local storage.
 
+## Google Photorealistic 3D Tiles (optional)
+
+In Settings, paste a Google Maps Platform API key with the **Map Tiles API**
+enabled and tick "Google Photorealistic 3D Tiles". The game then streams
+Google's textured 3D mesh (real buildings, true imagery) instead of the
+elevation terrain, re-oriented into the game's local frame and vertically
+calibrated against the elevation data at the exit. Buildings become solid:
+the physics uses whichever surface is higher, elevation data or tiles. The
+key is stored only in your browser's local storage, and usage is billed to
+your Google account.
+
+## Deploying
+
+Pushing to `main` runs `.github/workflows/deploy.yml`, which builds the site
+and publishes `dist/` to GitHub Pages (enable Pages with the "GitHub Actions"
+source in the repository settings). `npm run build` then `npm run preview`
+serves the production build locally.
+
 ## Scripts
 
 - `npm run probe -- <lat> <lon> [heading] [km]` prints a terrain profile.

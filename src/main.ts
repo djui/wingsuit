@@ -18,6 +18,7 @@ import { CloudLayer } from './world/sky/clouds';
 import { Precipitation3D } from './world/sky/particles';
 import { SkyDome } from './world/sky/sky';
 import { TerrainManager } from './world/terrain/chunks';
+import { GoogleTiles } from './world/terrain/google3d';
 import { ATTRIBUTION } from './world/terrain/tiles';
 import { fetchLiveWeather, resolveEnvironment, settingsFromLive } from './world/weather';
 import { WindField } from './world/wind';
@@ -52,6 +53,8 @@ localStorage.setItem('wingsuit.location', location.id);
 const origin = new GeoOrigin(location.exit);
 const terrain = new TerrainManager(origin, location.loadRadius);
 scene.add(terrain.group);
+const google = new GoogleTiles(origin, camera, renderer);
+scene.add(google.group);
 
 const flyer = createFlyerModel();
 scene.add(flyer.group);
@@ -63,7 +66,7 @@ const audio = new GameAudio();
 let suitChoice: SuitChoice = loadSuitChoice();
 let suitTexture: THREE.CanvasTexture | undefined;
 const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-let gameSettings: GameSettings = { mouseSteering: false, touchControls: coarsePointer, audio: audio.enabled };
+let gameSettings: GameSettings = { mouseSteering: false, touchControls: coarsePointer, audio: audio.enabled, googleTiles: false, googleKey: '' };
 try {
   const raw = localStorage.getItem('wingsuit.settings');
   if (raw) gameSettings = { ...gameSettings, ...(JSON.parse(raw) as Partial<GameSettings>) };
@@ -117,6 +120,18 @@ function applySettings(settings: GameSettings): void {
   input.touch.setEnabled(settings.touchControls);
   audio.setEnabled(settings.audio);
   menu.setSettings(settings);
+  const wantGoogle = settings.googleTiles && settings.googleKey.length > 20;
+  if (wantGoogle && !google.active) {
+    google.enable(settings.googleKey);
+    google.setTint(sky.output.sunColor.clone().lerp(new THREE.Color(1, 1, 1), 0.5));
+    menu.setGoogleStatus('Loading Google 3D Tiles… the elevation terrain stays as physics fallback.');
+  } else if (!wantGoogle && google.active) {
+    google.disable();
+    menu.setGoogleStatus('Google 3D Tiles off.');
+  } else if (settings.googleTiles && !wantGoogle) {
+    menu.setGoogleStatus('Enter a Google Maps API key (Map Tiles API enabled) to turn on 3D tiles.');
+  }
+  terrain.group.visible = !google.active;
 }
 
 // Audio needs a user gesture to start.
@@ -144,6 +159,7 @@ function applyEnvironment(settings: EnvironmentSettings): void {
   clouds.setLight(sky.output.sunColor, 0.35 + 0.65 * sky.output.daylight);
   clouds.setAltitude(exitPos.y + (envState.cloudCover > 0.6 ? 350 : 700));
   precipitation.set(envState.precip, envState.precipIntensity);
+  google.setTint(sky.output.sunColor.clone().lerp(new THREE.Color(1, 1, 1), 0.5));
   windField.set(envState.windSpeed, envState.windFrom, envState.gustiness, envState.precipIntensity);
 }
 
@@ -259,6 +275,15 @@ function syncModel(): void {
 }
 
 const _normal = new THREE.Vector3();
+/** Tile surface height under the flyer, refreshed once per frame (raycasts are not free). */
+let tileGround: number | null = null;
+
+/** Highest known surface under scene x/z: elevation data or 3D tiles (buildings). */
+function surfaceHeight(x: number, z: number): number | null {
+  const dem = terrain.getHeight(x, z);
+  if (tileGround === null) return dem;
+  return dem === null ? tileGround : Math.max(dem, tileGround);
+}
 
 /** Called when the body touches terrain. Decides landing vs crash. */
 function groundContact(ground: number): void {
@@ -331,7 +356,7 @@ function frame(now: number): void {
         finishRun(false, `Hard opening at ${(canopy.deploySpeed * 3.6).toFixed(0)} km/h — ${canopy.peakOpeningG.toFixed(1)} g tore the canopy`);
         break;
       }
-      const ground = terrain.getHeight(body.position.x, body.position.z);
+      const ground = surfaceHeight(body.position.x, body.position.z);
       if (ground !== null && body.position.y < ground + BODY_CLEARANCE) {
         groundContact(ground);
         break;
@@ -342,6 +367,22 @@ function frame(now: number): void {
 
   syncModel();
   terrain.update(body.position.x, body.position.z, now);
+  if (google.active) {
+    google.update();
+    if (!google.calibrated) {
+      const dem = terrain.getHeight(exitPos.x, exitPos.z);
+      if (dem !== null && google.calibrate(exitPos.x, exitPos.z, dem)) {
+        menu.setGoogleStatus(`Google 3D Tiles on (vertical offset ${google.calibration.toFixed(0)} m vs elevation data).`);
+      }
+    }
+    tileGround = google.calibrated ? google.groundHeight(body.position.x, body.position.z) : null;
+    if (google.error) menu.setGoogleStatus(`Google 3D Tiles error: ${google.error}`);
+    // Fall back to the elevation terrain if the tiles cannot load.
+    terrain.group.visible = google.error !== '';
+    document.getElementById('attribution')!.textContent = `${google.attribution} · Elevation: Mapzen/AWS Terrain Tiles`;
+  } else {
+    tileGround = null;
+  }
   sky.follow(body.position);
   clouds.update(body.position, wind, dt);
   if (!(window as unknown as { __freezeCamera?: boolean }).__freezeCamera) rig.update(body, dt, canopy.openness, terrain);
@@ -367,7 +408,7 @@ function frame(now: number): void {
     const lzBearing = Math.atan2(lzPos.x - body.position.x, -(lzPos.z - body.position.z));
     hud.update({
       body,
-      groundHeight: terrain.getHeight(body.position.x, body.position.z),
+      groundHeight: surfaceHeight(body.position.x, body.position.z),
       distance: horizontalDistance(body.position.x, body.position.z, exitPos.x, exitPos.z),
       time: run.time,
       wind: { fromDeg: windField.fromDeg, speed: Math.hypot(wind.x, wind.z) },

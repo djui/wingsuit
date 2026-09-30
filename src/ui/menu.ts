@@ -9,6 +9,8 @@ export interface GameSettings {
   mouseSteering: boolean;
   touchControls: boolean;
   audio: boolean;
+  googleTiles: boolean;
+  googleKey: string;
 }
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -54,6 +56,9 @@ export class Menu {
   private setMouse = el<HTMLInputElement>('set-mouse');
   private setTouch = el<HTMLInputElement>('set-touch');
   private setAudio = el<HTMLInputElement>('set-audio');
+  private setGoogle = el<HTMLInputElement>('set-google');
+  private setGoogleKey = el<HTMLInputElement>('set-google-key');
+  private googleStatus = el('set-google-status');
   private gamepadStatus = el('set-gamepad');
 
   constructor(private readonly cb: MenuCallbacks) {
@@ -76,19 +81,31 @@ export class Menu {
       const f = this.suitUpload.files?.[0];
       if (f) this.cb.onSuitUpload(f);
     });
-    for (const c of [this.setMouse, this.setTouch, this.setAudio]) {
+    for (const c of [this.setMouse, this.setTouch, this.setAudio, this.setGoogle, this.setGoogleKey]) {
       c.addEventListener('change', () => this.cb.onSettings(this.settings));
     }
   }
 
   get settings(): GameSettings {
-    return { mouseSteering: this.setMouse.checked, touchControls: this.setTouch.checked, audio: this.setAudio.checked };
+    return {
+      mouseSteering: this.setMouse.checked,
+      touchControls: this.setTouch.checked,
+      audio: this.setAudio.checked,
+      googleTiles: this.setGoogle.checked,
+      googleKey: this.setGoogleKey.value.trim(),
+    };
   }
 
   setSettings(s: GameSettings): void {
     this.setMouse.checked = s.mouseSteering;
     this.setTouch.checked = s.touchControls;
     this.setAudio.checked = s.audio;
+    this.setGoogle.checked = s.googleTiles;
+    this.setGoogleKey.value = s.googleKey;
+  }
+
+  setGoogleStatus(text: string): void {
+    this.googleStatus.textContent = text;
   }
 
   setGamepad(connected: boolean): void {
